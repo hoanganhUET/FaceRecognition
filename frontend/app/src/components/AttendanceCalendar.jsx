@@ -1,115 +1,191 @@
 import React, { useState, useEffect } from 'react';
 
 function AttendanceCalendar() {
-  const [currentDate, setCurrentDate] = useState(new Date()); // Ngày hiện tại
-  const [displayMonth, setDisplayMonth] = useState(null); // Tháng được hiển thị
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [displayMonth, setDisplayMonth] = useState(null);
   const [calendar, setCalendar] = useState([]);
-  const [selectedDay, setSelectedDay] = useState(null); // Ngày được chọn để hiển thị modal
-  const [note, setNote] = useState(''); // Ghi chú từ ô nhập văn bản
-  const [selectedFile, setSelectedFile] = useState(null); // File đính kèm
-
-  // Dữ liệu giả cho điểm danh (tháng 6, 7, 8/2025)
-const mockAttendance = {
-    '6-1': { status: 'present', time: '08:00 AM' },
-    '6-2': { status: 'absent', time: '' },
-    '6-5': { status: 'present', time: '09:15 AM' },
-    '6-10': { status: 'absent', time: '' },
-    '6-15': { status: 'present', time: '07:45 AM' },
-    '6-20': { status: 'absent', time: '' },
-    '6-30': { status: 'present', time: '08:30 AM' },
-    '7-1': { status: 'present', time: '08:00 AM' },
-    '7-2': { status: 'absent', time: '' },
-    '7-3': { status: 'present', time: '09:15 AM' },
-    '7-5': { status: 'absent', time: '' },
-    '7-7': { status: 'present', time: '07:45 AM' },
-    '7-10': { status: 'absent', time: '' },
-    '7-15': { status: 'present', time: '08:30 AM' },
-    '7-20': { status: 'absent', time: '' },
-    '7-30': { status: 'present', time: '08:00 AM' },
-    '8-1': { status: 'present', time: '09:00 AM' },
-    '8-2': { status: 'absent', time: '' },
-    '8-5': { status: 'present', time: '07:30 AM' },
-  };
+  const [selectedDay, setSelectedDay] = useState(null);
+  const [note, setNote] = useState('');
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [attendanceData, setAttendanceData] = useState({});
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const updateMonth = () => {
       const now = new Date();
       setCurrentDate(now);
-      setDisplayMonth(now.getMonth()); // Cập nhật tháng hiện tại khi thời gian thay đổi
+      setDisplayMonth(now.getMonth());
     };
 
-    updateMonth(); // Cập nhật lần đầu
-    const interval = setInterval(updateMonth, 60000); // Kiểm tra mỗi phút
-    return () => clearInterval(interval); // Dọn dẹp interval
+    updateMonth();
+    const interval = setInterval(updateMonth, 60000);
+    return () => clearInterval(interval);
   }, []);
 
+  // Fetch attendance data từ API
+  useEffect(() => {
+    if (displayMonth !== null) {
+      fetchAttendanceData();
+    }
+  }, [displayMonth, currentDate]);
+
+  const fetchAttendanceData = async () => {
+    try {
+      setLoading(true);
+      const year = currentDate.getFullYear();
+      const month = displayMonth + 1; // +1 vì getMonth() trả về 0-11
+      
+      const response = await fetch(
+        `http://localhost:5001/api/student/attendance?year=${year}&month=${month}`,
+        { credentials: 'include' }
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        setAttendanceData(data.attendance || {});
+      } else {
+        console.error('Failed to fetch attendance data');
+        setAttendanceData({});
+      }
+    } catch (error) {
+      console.error('Error fetching attendance data:', error);
+      setAttendanceData({});
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Tạo calendar dựa trên dữ liệu thực
   useEffect(() => {
     if (displayMonth !== null) {
       const year = currentDate.getFullYear();
       const month = displayMonth;
-      const daysInMonth = new Date(year, month + 1, 0).getDate(); // Số ngày trong tháng
-      const firstDay = new Date(year, month, 1).getDay(); // Ngày đầu tiên là thứ mấy (0-6)
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const firstDay = new Date(year, month, 1).getDay();
 
       const calendarDays = [];
-      // Thêm các ngày trống trước ngày 1
+      
+      // Thêm các ngày trống
       for (let i = 0; i < firstDay; i++) {
         calendarDays.push(null);
       }
+      
       // Thêm các ngày trong tháng
       for (let day = 1; day <= daysInMonth; day++) {
-        const key = `${month + 1}-${day}`; // Ví dụ: "7-1" cho ngày 1 tháng 7
-        const attendanceData = mockAttendance[key] || { status: 'absent', time: '' };
+        const key = `${month + 1}-${day}`;
+        const attendanceInfo = attendanceData[key] || { status: 'absent', time: '' };
         calendarDays.push({
           day,
           month: month + 1,
-          status: attendanceData.status,
-          time: attendanceData.time,
+          status: attendanceInfo.status,
+          time: attendanceInfo.time,
         });
       }
-
-      // Điền đủ 7 cột mỗi hàng
+      
+      // Điền đủ 7 cột
       while (calendarDays.length % 7 !== 0) {
         calendarDays.push(null);
       }
 
       setCalendar(calendarDays);
     }
-  }, [displayMonth, currentDate]);
+  }, [displayMonth, currentDate, attendanceData]);
 
   const goBackMonth = () => {
-    setDisplayMonth((prev) => (prev === 0 ? 11 : prev - 1));
+    setCurrentDate(prevDate => {
+      const newDate = new Date(prevDate);
+      if (newDate.getMonth() === 0) {
+        // Từ tháng 1 về tháng 12 năm trước
+        newDate.setFullYear(newDate.getFullYear() - 1);
+        newDate.setMonth(11);
+      } else {
+        newDate.setMonth(newDate.getMonth() - 1);
+      }
+      return newDate;
+    });
+    
+    setDisplayMonth((prev) => {
+      if (prev === 0) {
+        return 11; // Tháng 12
+      }
+      return prev - 1;
+    });
   };
+
   const goNextMonth = () => {
-  setDisplayMonth((prev) => (prev === 11 ? 0 : prev + 1));
+    setCurrentDate(prevDate => {
+      const newDate = new Date(prevDate);
+      if (newDate.getMonth() === 11) {
+        // Từ tháng 12 sang tháng 1 năm sau
+        newDate.setFullYear(newDate.getFullYear() + 1);
+        newDate.setMonth(0);
+      } else {
+        newDate.setMonth(newDate.getMonth() + 1);
+      }
+      return newDate;
+    });
+    
+    setDisplayMonth((prev) => {
+      if (prev === 11) {
+        return 0; // Tháng 1
+      }
+      return prev + 1;
+    });
   };
 
   const monthNames = [
     'Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Tháng 6',
     'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12',
   ];
+
   const handleDayClick = (day) => {
     if (day) {
       setSelectedDay(day);
-      setNote(''); // Reset ghi chú khi mở modal
-      setSelectedFile(null); // Reset file khi mở modal
+      setNote('');
+      setSelectedFile(null);
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (selectedDay) {
-      console.log('Gửi dữ liệu:', {
-        day: `${selectedDay.month}-${selectedDay.day}`,
-        note,
-        file: selectedFile ? selectedFile.name : 'No file',
-      });
-      alert('Dữ liệu đã được gửi (mô phỏng)!');
-      setSelectedDay(null); // Đóng modal
+      try {
+        // Gửi ghi chú hoặc file nếu cần thiết
+        const formData = new FormData();
+        formData.append('date', `${currentDate.getFullYear()}-${selectedDay.month}-${selectedDay.day}`);
+        formData.append('note', note);
+        
+        if (selectedFile) {
+          formData.append('file', selectedFile);
+        }
+
+        const response = await fetch('http://localhost:5001/api/student/attendance/note', {
+          method: 'POST',
+          credentials: 'include',
+          body: formData
+        });
+
+        if (response.ok) {
+          alert('Ghi chú đã được lưu!');
+        } else {
+          const data = await response.json();
+          alert(`Lỗi: ${data.error}`);
+        }
+      } catch (error) {
+        console.error('Error submitting note:', error);
+        alert('Lỗi kết nối server');
+      }
+      
+      setSelectedDay(null);
     }
   };
 
   const handleFileChange = (e) => {
     setSelectedFile(e.target.files[0]);
   };
+
+  if (loading) {
+    return <div style={{ marginLeft: '30px', padding: '20px' }}>Đang tải dữ liệu điểm danh...</div>;
+  }
 
   return (
     <div style={{ marginLeft: '30px', padding: '20px', color: '#333' }}>
@@ -129,12 +205,12 @@ const mockAttendance = {
             cursor: 'pointer',
           }}
           onClick={goBackMonth}
-          disabled={displayMonth === null}
+          disabled={loading}
         >
-        trước
+          Trước
         </button>
         <button
-        style={{
+          style={{
             padding: '5px 10px',
             marginBottom: '10px',
             backgroundColor: '#4CAF50',
@@ -143,12 +219,13 @@ const mockAttendance = {
             borderRadius: '4px',
             cursor: 'pointer',
             marginLeft: '10px',
-        }}
-        onClick={goNextMonth}
-        disabled={displayMonth === null}
+          }}
+          onClick={goNextMonth}
+          disabled={loading}
         >
-        sau
+          Sau
         </button>
+        
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 40px)', gap: '5px' }}>
           {['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'].map((day) => (
             <div key={day} style={{ fontWeight: 'bold', textAlign: 'center' }}>
@@ -163,12 +240,7 @@ const mockAttendance = {
                 height: '40px',
                 textAlign: 'center',
                 border: '1px solid #ccc',
-                backgroundColor:
-                  day === null
-                    ? 'transparent'
-                    : day.status === 'present'
-                    ? '#90ee90' // Màu xanh nhạt cho present
-                    : '#ffcccc', // Màu đỏ nhạt cho absent
+                backgroundColor: day === null ? 'transparent' : day.status === 'present' ? '#90ee90' : '#ffcccc',
                 cursor: day ? 'pointer' : 'default',
               }}
               onClick={() => handleDayClick(day)}
@@ -195,6 +267,7 @@ const mockAttendance = {
           }}
         >
           <h3>Chi tiết ngày {selectedDay.day}/{selectedDay.month}/{currentDate.getFullYear()}</h3>
+          <p>Trạng thái: {selectedDay.status === 'present' ? 'Đã điểm danh' : 'Vắng mặt'}</p>
           <p>Thời gian điểm danh: {selectedDay.time || 'Chưa điểm danh'}</p>
           <textarea
             style={{ width: '100%', margin: '10px 0', padding: '5px' }}
@@ -238,9 +311,9 @@ const mockAttendance = {
             </button>
           </div>
         </div>
-        )}
-        </div>
-    );
-    }
+      )}
+    </div>
+  );
+}
 
 export default AttendanceCalendar;

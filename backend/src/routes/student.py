@@ -95,36 +95,155 @@ def delete_face_data(face_id):
 
 @student_bp.route('/student/attendance', methods=['GET'])
 @require_auth
-def get_attendance():
+def get_student_attendance():
+    """Lấy dữ liệu điểm danh của học sinh"""
     try:
         user_id = session.get('user_id')
+        student = User.query.get(user_id)
         
-        # Get query parameters for filtering
-        date_from = request.args.get('date_from')
-        date_to = request.args.get('date_to')
+        if not student or student.role != 'student':
+            return jsonify({'error': 'Không có quyền truy cập'}), 403
         
-        query = Attendance.query.filter_by(user_id=user_id)
+        year = request.args.get('year', type=int)
+        month = request.args.get('month', type=int)
         
-        if date_from:
-            try:
-                date_from_obj = datetime.fromisoformat(date_from)
-                query = query.filter(Attendance.check_in_time >= date_from_obj)
-            except ValueError:
-                return jsonify({'error': 'Định dạng date_from không hợp lệ'}), 400
+        if not year or not month:
+            return jsonify({'error': 'Thiếu tham số year hoặc month'}), 400
         
-        if date_to:
-            try:
-                date_to_obj = datetime.fromisoformat(date_to)
-                query = query.filter(Attendance.check_in_time <= date_to_obj)
-            except ValueError:
-                return jsonify({'error': 'Định dạng date_to không hợp lệ'}), 400
+        # Lấy dữ liệu điểm danh trong tháng
+        from datetime import datetime
+        start_date = datetime(year, month, 1)
+        if month == 12:
+            end_date = datetime(year + 1, 1, 1)
+        else:
+            end_date = datetime(year, month + 1, 1)
         
-        attendance_records = query.order_by(Attendance.check_in_time.desc()).all()
+        attendances = Attendance.query.filter(
+            Attendance.user_id == user_id,
+            Attendance.check_in_time >= start_date,
+            Attendance.check_in_time < end_date
+        ).all()
         
-        return jsonify({
-            'attendance_records': [record.to_dict() for record in attendance_records]
-        }), 200
+        # Tổ chức dữ liệu theo ngày
+        attendance_by_day = {}
+        for att in attendances:
+            day = att.check_in_time.day
+            key = f"{month}-{day}"
+            attendance_by_day[key] = {
+                'status': att.status,
+                'time': att.check_in_time.strftime('%H:%M')
+            }
+        
+        return jsonify({'attendance': attendance_by_day}), 200
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@student_bp.route('/student/attendance', methods=['POST'])
+@require_auth
+def create_attendance():
+    try:
+        user_id = session.get('user_id')
+        user = User.query.get(user_id)
+        
+        if not user:
+            return jsonify({'error': 'User không tồn tại'}), 404
+        
+        data = request.get_json()
+        
+        # Validate required fields
+        if 'check_in_time' not in data:
+            return jsonify({'error': 'Thiếu thời gian điểm danh'}), 400
+        
+        attendance_record = Attendance(
+            user_id=user_id,
+            check_in_time=datetime.fromisoformat(data['check_in_time']),
+            status=data.get('status', 'present')  # Default to 'present'
+        )
+        
+        db.session.add(attendance_record)
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Điểm danh thành công',
+            'attendance_record': attendance_record.to_dict()
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@student_bp.route('/student/attendance/note', methods=['POST'])
+@require_auth
+def add_attendance_note():
+    try:
+        user_id = session.get('user_id')
+        user = User.query.get(user_id)
+        
+        if not user:
+            return jsonify({'error': 'User không tồn tại'}), 404
+        
+        data = request.form
+        date_str = data.get('date')
+        note = data.get('note')
+        file = request.files.get('file')
+        
+        if not date_str:
+            return jsonify({'error': 'Thiếu ngày điểm danh'}), 400
+        
+        # Parse date
+        from datetime import datetime
+        try:
+            attendance_date = datetime.strptime(date_str, '%Y-%m-%d')
+        except ValueError:
+            return jsonify({'error': 'Ngày không hợp lệ, định dạng: YYYY-MM-DD'}), 400
+        
+        # Kiểm tra xem điểm danh đã tồn tại chưa
+        attendance_record = Attendance.query.filter_by(
+            user_id=user_id,
+            check_in_time=attendance_date
+        ).first()
+        
+        if not attendance_record:
+            return jsonify({'error': 'Không tìm thấy bản ghi điểm danh'}), 404
+        
+        # Cập nhật ghi chú
+        attendance_record.note = note or ''
+        
+        # Xử lý file đính kèm (nếu có)
+        if file:
+            # Kiểm tra loại file
+            if not allowed_file(file.filename):
+                return jsonify({'error': 'Loại file không được phép'}), 400
+            
+            # Lưu file vào thư mục đính kèm
+            import os
+            from werkzeug.utils import secure_filename
+            uploads_dir = 'uploads/attendance_notes'
+            os.makedirs(uploads_dir, exist_ok=True)
+            
+            # Xóa file cũ nếu có
+            if attendance_record.file_path and os.path.exists(attendance_record.file_path):
+                os.remove(attendance_record.file_path)
+            
+            # Lưu file mới
+            filename = secure_filename(file.filename)
+            file_path = os.path.join(uploads_dir, filename)
+            file.save(file_path)
+            attendance_record.file_path = file_path
+        
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Cập nhật ghi chú điểm danh thành công',
+            'attendance_record': attendance_record.to_dict()
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+def allowed_file(filename):
+    """Kiểm tra định dạng file được phép (chỉ cho phép hình ảnh và tài liệu PDF)"""
+    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS

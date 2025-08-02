@@ -6,78 +6,41 @@ function LoginComponent() {
   const [password, setPassword] = useState('');
   const navigate = useNavigate();
 
-  // Dữ liệu giả để mô phỏng người dùng
-  const mockUsers = [
-    { username: 'admin', password: 'admin123', role: 'admin' },
-    { username: 'student', password: 'student123', role: 'student' },
-    { username: 'teacher', password: 'teacher123', role: 'teacher' },
-  ];
-/*
-  useEffect(() => {
-    const usernameInput = document.getElementById('username');
-    const passwordInput = document.getElementById('password');
-    if (usernameInput && passwordInput) {
-      usernameInput.addEventListener('input', (e) => setUsername(e.target.value));
-      passwordInput.addEventListener('input', (e) => setPassword(e.target.value));
-    }
-
-    return () => {
-      if (usernameInput) usernameInput.removeEventListener('input', (e) => setUsername(e.target.value));
-      if (passwordInput) passwordInput.removeEventListener('input', (e) => setPassword(e.target.value));
-    };
-  }, []);
-  const handleLogin = async () => {    //button -> backend
-  try {
-    const response = await fetch('URL_BACKEND', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    });
-    const data = await response.json();
-    console.log('Phản hồi từ server:', data);
-  } catch (error) {
-    console.error('Lỗi gửi dữ liệu:', error);
-  }
-    if (response.ok) {
-      const role = data.role; // Giả sử backend trả về { role: 'admin' | 'student' | 'teacher' }
-      switch (role) {
-        case 'admin':
-          navigate('/admin');
-          break;
-        case 'student':
-          navigate('/student');
-          break;
-        case 'teacher':
-          navigate('/teacher');
-          break;
-        default:
+  const handleLogin = async () => {
+    try {
+      const response = await fetch('http://localhost:5001/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ username, password }),
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        const role = data.user.role;
+        switch (role) {
+          case 'admin':
+            navigate('/admin');
+            break;
+          case 'student':
+            navigate('/student');
+            break;
+          case 'teacher':
+            navigate('/teacher');
+            break;
+          default:
             alert('Vai trò không hợp lệ');
         }
+      } else {
+        alert(`Lỗi: ${data.error}`);
       }
-};*/
-const handleLogin = () => {
-    const user = mockUsers.find(
-      (u) => u.username === username && u.password === password
-    );
-
-    if (user) {
-      switch (user.role) {
-        case 'admin':
-          navigate('/admin');
-          break;
-        case 'student':
-          navigate('/student');
-          break;
-        case 'teacher':
-          navigate('/teacher');
-          break;
-        default:
-          alert('Vai trò không hợp lệ');
-      }
-    } else {
-      alert('Tên đăng nhập hoặc mật khẩu không đúng');
+    } catch (error) {
+      console.error('Lỗi kết nối:', error);
+      alert('Lỗi kết nối server');
     }
   };
+
   return (
     <div
       id="loginSection"
@@ -90,7 +53,7 @@ const handleLogin = () => {
       <div 
         id="loginTitle" 
         style={{ fontSize: '45px', fontWeight: 'bold', color: '#333', marginBottom: '10px', marginLeft: '95px', }}
-        >
+      >
         Đăng nhập
       </div>
       <input

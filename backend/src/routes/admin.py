@@ -3,6 +3,7 @@ from src.models.user import db, User, Attendance
 from src.routes.auth import require_admin
 from datetime import datetime
 
+
 admin_bp = Blueprint('admin', __name__)
 
 @admin_bp.route('/admin/students', methods=['GET'])
@@ -15,6 +16,7 @@ def get_all_students():
         }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
 
 @admin_bp.route('/admin/students', methods=['POST'])
 @require_admin
@@ -159,3 +161,127 @@ def get_attendance_records():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@admin_bp.route('/admin/teachers', methods=['GET', 'POST'])
+@require_admin
+def manage_teachers():
+    if request.method == 'GET':
+        try:
+            teachers = User.query.filter_by(role='teacher').all()
+            return jsonify({
+                'teachers': [teacher.to_dict() for teacher in teachers]
+            }), 200
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+    
+    elif request.method == 'POST':
+        try:
+            data = request.get_json()
+            
+            # Validate required fields
+            required_fields = ['username', 'password', 'full_name']
+            for field in required_fields:
+                if not data.get(field):
+                    return jsonify({'error': f'{field} là bắt buộc'}), 400
+            
+            # Check if username already exists
+            existing_user = User.query.filter_by(username=data['username']).first()
+            if existing_user:
+                return jsonify({'error': 'Username đã tồn tại'}), 400
+            
+            # Create new teacher
+            teacher = User(
+                username=data['username'],
+                role='teacher',
+                full_name=data['full_name'],
+                class_name=data.get('class_name'),
+                school=data.get('school')
+            )
+            teacher.set_password(data['password'])
+            
+            db.session.add(teacher)
+            db.session.commit()
+            
+            return jsonify({
+                'message': 'Tạo giáo viên thành công',
+                'teacher': teacher.to_dict()
+            }), 201
+            
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'error': str(e)}), 500
+
+@admin_bp.route('/admin/teachers/<int:teacher_id>', methods=['PUT', 'DELETE'])
+@require_admin  
+def manage_teacher(teacher_id):
+    if request.method == 'PUT':
+        try:
+            teacher = User.query.filter_by(id=teacher_id, role='teacher').first()
+            if not teacher:
+                return jsonify({'error': 'Giáo viên không tồn tại'}), 404
+            
+            data = request.get_json()
+            
+            # Check if new username conflicts with existing users
+            if data.get('username') and data['username'] != teacher.username:
+                existing = User.query.filter_by(username=data['username']).first()
+                if existing:
+                    return jsonify({'error': 'Username đã tồn tại'}), 400
+                teacher.username = data['username']
+            
+            # Update other fields
+            if data.get('full_name'):
+                teacher.full_name = data['full_name']
+            if data.get('class_name'):
+                teacher.class_name = data['class_name']
+            if data.get('school'):
+                teacher.school = data['school']
+            if data.get('password'):
+                teacher.set_password(data['password'])
+            
+            teacher.updated_at = datetime.utcnow()
+            db.session.commit()
+            
+            return jsonify({
+                'message': 'Cập nhật giáo viên thành công',
+                'teacher': teacher.to_dict()
+            }), 200
+            
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'error': str(e)}), 500
+    
+    elif request.method == 'DELETE':
+        try:
+            teacher = User.query.filter_by(id=teacher_id, role='teacher').first()
+            if not teacher:
+                return jsonify({'error': 'Giáo viên không tồn tại'}), 404
+            
+            db.session.delete(teacher)
+            db.session.commit()
+            
+            return jsonify({'message': 'Xóa giáo viên thành công'}), 200
+            
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'error': str(e)}), 500
+
+@admin_bp.route('/admin/dashboard/stats', methods=['GET'])
+@require_admin
+def get_dashboard_stats():
+    """Lấy thống kê cho dashboard"""
+    try:
+        total_students = User.query.filter_by(role='student').count()
+        total_teachers = User.query.filter_by(role='teacher').count()
+        total_attendance_today = Attendance.query.filter(
+            Attendance.check_in_time >= datetime.now().date()
+        ).count()
+        
+        return jsonify({
+            'total_students': total_students,
+            'total_teachers': total_teachers,
+            'total_attendance_today': total_attendance_today,
+            'attendance_rate': total_attendance_today / total_students * 100 if total_students > 0 else 0
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
