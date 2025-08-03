@@ -178,3 +178,97 @@ def test_recognition():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@face_bp.route('/face/debug-recognition', methods=['POST'])
+@require_auth
+def debug_recognition():
+    """Debug endpoint for detailed face recognition analysis"""
+    try:
+        user_id = session.get('user_id')
+        data = request.get_json()
+        image_data = data.get('image')
+        
+        if not image_data:
+            return jsonify({'error': 'Không có dữ liệu ảnh'}), 400
+        
+        # Get user's face data
+        user_face_data = FaceData.query.filter_by(user_id=user_id).all()
+        
+        if len(user_face_data) == 0:
+            return jsonify({'error': 'Chưa đăng ký khuôn mặt'}), 400
+        
+        # Debug information
+        debug_info = {
+            'registered_faces': len(user_face_data),
+            'scores': [],
+            'best_score': 0.0,
+            'threshold_used': 0.4
+        }
+        
+        try:
+            # Get known encodings
+            known_encodings = [face.face_encoding for face in user_face_data]
+            
+            # Extract features from test image
+            test_encoding = face_recognizer.encode_face_advanced(image_data)
+            
+            # Compare with each registered face
+            for i, known_encoding in enumerate(known_encodings):
+                score = face_recognizer.compare_faces_advanced(test_encoding, known_encoding)
+                debug_info['scores'].append({
+                    'face_index': i,
+                    'similarity_score': round(score, 4)
+                })
+                
+                if score > debug_info['best_score']:
+                    debug_info['best_score'] = score
+            
+            # Recognition result
+            match_index, confidence = face_recognizer.recognize_face_advanced(
+                image_data, known_encodings, threshold=0.4
+            )
+            
+            debug_info['recognition_result'] = {
+                'match_found': match_index is not None,
+                'match_index': match_index,
+                'confidence': round(confidence, 4),
+                'above_threshold': confidence >= 0.4
+            }
+            
+            return jsonify(debug_info), 200
+            
+        except Exception as e:
+            debug_info['error'] = str(e)
+            return jsonify(debug_info), 400
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@face_bp.route('/face/validate-image', methods=['POST'])
+@require_auth
+def validate_image():
+    """Validate if image contains a detectable face"""
+    try:
+        data = request.get_json()
+        image_data = data.get('image')
+        
+        if not image_data:
+            return jsonify({'error': 'Không có dữ liệu ảnh'}), 400
+        
+        try:
+            # Try to encode face - if successful, face is detected
+            face_encoding = face_recognizer.encode_face(image_data)
+            
+            return jsonify({
+                'message': 'Ảnh hợp lệ - Đã phát hiện khuôn mặt',
+                'face_detected': True
+            }), 200
+            
+        except ValueError as e:
+            return jsonify({
+                'error': str(e),
+                'face_detected': False
+            }), 400
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
