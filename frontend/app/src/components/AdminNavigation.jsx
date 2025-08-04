@@ -2,7 +2,14 @@ import React from 'react';
 
 function AdminNavigation({ onCreateAccount, onManageStudents, onManageTeachers }) {
   return (
-    <div style={{ display: 'flex', gap: '20px', marginBottom: '20px' }}>
+    <div
+      style={{
+        display: 'flex',
+        marginLeft: '285px',
+        marginTop: '45px',
+        gap: '90px', // Khoảng cách giữa các nút
+      }}
+    >
       <button
         style={{
           padding: '10px 20px',

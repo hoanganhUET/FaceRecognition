@@ -207,7 +207,8 @@ function CreateAccount({ onClose }) {
   };
 
   return (
-    <div style={{ padding: '20px', border: '1px solid #ccc', borderRadius: '5px', backgroundColor: '#f9f9f9', maxWidth: '400px' }}>
+    <div style={{ padding: '20px', border: '1px solid #ccc',  position: 'fixed',top: '50%',left: '50%',
+    transform: 'translate(-50%, -50%)', borderRadius: '5px', backgroundColor: '#f9f9f9', maxWidth: '400px'}}>
       <h2>Tạo tài khoản mới</h2>
       <form>
         <div style={{ marginBottom: '10px' }}>
@@ -351,7 +352,7 @@ function CreateAccount({ onClose }) {
           type="button"
           style={{
             padding: '5px 10px',
-            backgroundColor: '#f44336',
+            backgroundColor: '#CC0000',
             color: 'white',
             border: 'none',
             borderRadius: '4px',

@@ -189,41 +189,45 @@ function AttendanceCalendar() {
 
   return (
     <div style={{ marginLeft: '30px', padding: '20px', color: '#333' }}>
-      <h1 style={{ fontSize: '24px', marginBottom: '10px' }}>Theo dõi điểm danh</h1>
+      <h1 style={{ fontSize: '24px', marginBottom: '10px',  textAlign: 'center' }}>Theo dõi điểm danh</h1>
       <div>
-        <h2 style={{ fontSize: '18px', marginBottom: '5px' }}>
+        <h2 style={{ fontSize: '18px', marginBottom: '5px',  textAlign: 'center' }}>
           {monthNames[displayMonth]} {currentDate.getFullYear()}
         </h2>
         <button
           style={{
             padding: '5px 10px',
             marginBottom: '10px',
-            backgroundColor: '#4CAF50',
-            color: 'white',
+            backgroundColor: 'transparent',
             border: 'none',
-            borderRadius: '4px',
             cursor: 'pointer',
           }}
           onClick={goBackMonth}
           disabled={loading}
         >
-          Trước
+          <img
+            src="/back.png"
+            alt="Trước"
+            style={{ width: '30px', height: '30px' }}
+          />
         </button>
         <button
           style={{
             padding: '5px 10px',
             marginBottom: '10px',
-            backgroundColor: '#4CAF50',
-            color: 'white',
+            backgroundColor: 'transparent',
             border: 'none',
-            borderRadius: '4px',
             cursor: 'pointer',
-            marginLeft: '10px',
+            marginLeft: '210px',
           }}
           onClick={goNextMonth}
           disabled={loading}
         >
-          Sau
+          <img
+            src="/next.png"
+            alt="Sau"
+            style={{ width: '30px', height: '30px' }}
+          />
         </button>
         
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 40px)', gap: '5px' }}>
@@ -299,7 +303,7 @@ function AttendanceCalendar() {
             <button
               style={{
                 padding: '5px 10px',
-                backgroundColor: '#f44336',
+                backgroundColor: '#CC0000',
                 color: 'white',
                 border: 'none',
                 borderRadius: '4px',

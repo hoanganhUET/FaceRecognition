@@ -4,6 +4,7 @@ import AdminNavigation from './AdminNavigation';
 import CreateAccount from './CreateAccount';
 import ManageStudents from './ManageStudents';
 import ManageTeachers from './ManageTeachers';
+import LogoutComponent from './LogoutComponent';
 
 function AdminDashboard() {
   const [activeSection, setActiveSection] = useState(null);
@@ -39,9 +40,12 @@ function AdminDashboard() {
 
   return (
     <div style={{ marginLeft: '30px', padding: '20px', color: '#333' }}>
-      <h1 style={{ marginBottom: '10px', fontSize: '40px' }}>
-        Admin: {userInfo?.full_name || 'N/A'}
-      </h1>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
+        <h1 style={{ fontSize: '40px', marginRight: '710px' }}>
+          Admin: {userInfo?.full_name || 'N/A'}
+        </h1>
+        <LogoutComponent />
+      </div>
       <AdminHeader />
       <AdminNavigation
         onCreateAccount={() => setActiveSection('create')}

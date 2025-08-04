@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import AttendanceCalendar from './AttendanceCalendar';
+import LogoutComponent from './LogoutComponent';
 
 function StudentDashboard() {
   const [userInfo, setUserInfo] = useState(null);
@@ -33,19 +34,36 @@ function StudentDashboard() {
   }
 
   return (
-    <div style={{ color: '#333', marginTop: '60px', marginLeft: '70px' }}>
+    <div style={{
+      marginLeft: '30px',
+      padding: '5px',
+      color: '#333',
+      height: '100vh'
+    }}>
+    <div style={{
+      position: 'fixed',
+      top: '50px',
+      right: '70px',
+      zIndex: 1000
+    }}>
+      <LogoutComponent />
+    </div>
+    <div style={{ position: 'fixed', top: '40px', left: '80px', zIndex: 1000 }}>
       <h1 style={{ marginBottom: '10px', fontSize: '40px' }}>
         Học sinh: {userInfo?.full_name || 'N/A'}
       </h1>
-      <p style={{ marginTop: '10px', fontSize: '20px' }}>
+      <p style={{ fontSize: '20px', margin: '0' }}>
         Lớp: {userInfo?.class_name || 'Chưa có'}
       </p>
-      <p style={{ marginTop: '5px', fontSize: '16px' }}>
+      <p style={{ fontSize: '20px', margin: '0' }}>
         Mã sinh viên: {userInfo?.student_id || 'N/A'}
       </p>
+    </div>
+    <div style={{position: 'fixed', top: '130px', left: '450px', zIndex: 1000}}>
       <AttendanceCalendar />
     </div>
-  );
+  </div>
+ );
 }
 
 export default StudentDashboard;
