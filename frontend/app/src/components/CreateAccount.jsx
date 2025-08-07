@@ -134,10 +134,15 @@ function CreateAccount({ onClose }) {
     }
     
     try {
-      // 1. Tạo tài khoản trước
-      const endpoint = role === 'student' 
-        ? 'http://localhost:5001/api/admin/students' 
-        : 'http://localhost:5001/api/admin/teachers';
+      // 1. Tạo tài khoản trước - Sửa logic endpoint
+      let endpoint;
+      if (role === 'student') {
+        endpoint = 'http://localhost:5001/api/admin/students';
+      } else if (role === 'teacher') {
+        endpoint = 'http://localhost:5001/api/admin/teachers';
+      } else if (role === 'admin') {
+        endpoint = 'http://localhost:5001/api/admin/admins'; // Cần tạo endpoint này
+      }
       
       const payload = {
         username: name.toLowerCase().replace(/\s+/g, ''),

@@ -1,40 +1,49 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 
-function LogoutComponent({ onLogout }) {
+function LogoutComponent() {
+  const navigate = useNavigate();
+
   const handleLogout = async () => {
-    // Hiển thị hộp thoại xác nhận
-    if (window.confirm('Bạn có chắc chắn muốn đăng xuất?')) {
-      try {
-        // Gọi API backend để đăng xuất
-        const response = await fetch('/logout', {
-          method: 'POST',
-          credentials: 'include', // Bao gồm cookie nếu cần
-        });
-        if (response.ok) {
-          onLogout(); // Gọi hàm onLogout từ props sau khi backend xử lý thành công
-        } else {
-          console.error('Đăng xuất thất bại:', response.statusText);
-          alert('Đăng xuất không thành công. Vui lòng thử lại!');
+    try {
+      const response = await fetch('http://localhost:5001/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
         }
-      } catch (error) {
-        console.error('Lỗi khi gọi API đăng xuất:', error);
-        alert('Có lỗi xảy ra khi đăng xuất. Vui lòng thử lại!');
+      });
+
+      if (response.ok) {
+        // Xóa thông tin người dùng khỏi localStorage nếu có
+        localStorage.removeItem('userInfo');
+        
+        // Chuyển hướng về trang đăng nhập
+        navigate('/');
+        
+        alert('Đăng xuất thành công!');
+      } else {
+        console.error('Logout failed');
+        alert('Đăng xuất thất bại!');
       }
+    } catch (error) {
+      console.error('Error during logout:', error);
+      alert('Lỗi khi đăng xuất!');
     }
   };
 
   return (
     <button
+      onClick={handleLogout}
       style={{
         padding: '10px 20px',
-        backgroundColor: '#CC0000',
+        backgroundColor: '#f44336',
         color: 'white',
         border: 'none',
         borderRadius: '4px',
         cursor: 'pointer',
-        marginTop: '10px',
+        fontSize: '16px'
       }}
-      onClick={handleLogout}
     >
       Đăng xuất
     </button>

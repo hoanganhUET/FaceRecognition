@@ -265,6 +265,107 @@ def manage_teacher(teacher_id):
             db.session.rollback()
             return jsonify({'error': str(e)}), 500
 
+@admin_bp.route('/admin/admins', methods=['GET', 'POST'])
+@require_admin
+def manage_admins():
+    if request.method == 'GET':
+        try:
+            admins = User.query.filter_by(role='admin').all()
+            return jsonify({
+                'admins': [admin.to_dict() for admin in admins]
+            }), 200
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+    
+    elif request.method == 'POST':
+        try:
+            data = request.get_json()
+            
+            # Validate required fields
+            required_fields = ['username', 'password', 'full_name']
+            for field in required_fields:
+                if not data.get(field):
+                    return jsonify({'error': f'{field} là bắt buộc'}), 400
+            
+            # Check if username already exists
+            existing_user = User.query.filter_by(username=data['username']).first()
+            if existing_user:
+                return jsonify({'error': 'Username đã tồn tại'}), 400
+            
+            # Create new admin
+            admin = User(
+                username=data['username'],
+                role='admin',
+                full_name=data['full_name'],
+                school=data.get('school')
+            )
+            admin.set_password(data['password'])
+            
+            db.session.add(admin)
+            db.session.commit()
+            
+            return jsonify({
+                'message': 'Tạo admin thành công',
+                'admin': admin.to_dict()
+            }), 201
+            
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'error': str(e)}), 500
+
+@admin_bp.route('/admin/admins/<int:admin_id>', methods=['PUT', 'DELETE'])
+@require_admin  
+def manage_admin(admin_id):
+    if request.method == 'PUT':
+        try:
+            admin = User.query.filter_by(id=admin_id, role='admin').first()
+            if not admin:
+                return jsonify({'error': 'Admin không tồn tại'}), 404
+            
+            data = request.get_json()
+            
+            # Check if new username conflicts with existing users
+            if data.get('username') and data['username'] != admin.username:
+                existing = User.query.filter_by(username=data['username']).first()
+                if existing:
+                    return jsonify({'error': 'Username đã tồn tại'}), 400
+                admin.username = data['username']
+            
+            # Update other fields
+            if data.get('full_name'):
+                admin.full_name = data['full_name']
+            if data.get('school'):
+                admin.school = data['school']
+            if data.get('password'):
+                admin.set_password(data['password'])
+            
+            admin.updated_at = datetime.utcnow()
+            db.session.commit()
+            
+            return jsonify({
+                'message': 'Cập nhật admin thành công',
+                'admin': admin.to_dict()
+            }), 200
+            
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'error': str(e)}), 500
+    
+    elif request.method == 'DELETE':
+        try:
+            admin = User.query.filter_by(id=admin_id, role='admin').first()
+            if not admin:
+                return jsonify({'error': 'Admin không tồn tại'}), 404
+            
+            db.session.delete(admin)
+            db.session.commit()
+            
+            return jsonify({'message': 'Xóa admin thành công'}), 200
+            
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'error': str(e)}), 500
+
 @admin_bp.route('/admin/dashboard/stats', methods=['GET'])
 @require_admin
 def get_dashboard_stats():

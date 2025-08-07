@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import AdminHeader from './AdminHeader';
 import AdminNavigation from './AdminNavigation';
 import CreateAccount from './CreateAccount';
@@ -10,6 +11,7 @@ function AdminDashboard() {
   const [activeSection, setActiveSection] = useState(null);
   const [userInfo, setUserInfo] = useState(null);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchUserInfo();
@@ -25,7 +27,11 @@ function AdminDashboard() {
         const data = await response.json();
         setUserInfo(data.user);
       } else {
+        // Nếu không thể lấy thông tin user, có thể session đã hết hạn
         console.error('Failed to fetch user info');
+        if (response.status === 401) {
+          navigate('/');
+        }
       }
     } catch (error) {
       console.error('Error fetching user info:', error);
