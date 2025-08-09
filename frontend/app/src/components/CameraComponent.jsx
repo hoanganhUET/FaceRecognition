@@ -39,40 +39,48 @@ function CameraComponent() {
 
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
-    canvas.width = videoRef.current.videoWidth;
-    canvas.height = videoRef.current.videoHeight;
-
-    context.drawImage(videoRef.current, 0, 0);
-    const imageData = canvas.toDataURL('image/jpeg');
+    
+    // Use higher resolution for better quality
+    canvas.width = Math.min(videoRef.current.videoWidth, 640);
+    canvas.height = Math.min(videoRef.current.videoHeight, 480);
+    
+    context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+    
+    // Apply some basic enhancement
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+    // You could add client-side image enhancement here
+    
+    const processedImageData = canvas.toDataURL('image/jpeg', 0.95); // Higher quality
 
     try {
       setIsDetecting(true);
+      
       const response = await fetch('http://localhost:5001/api/face/recognize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ image: imageData }),
+        body: JSON.stringify({ 
+          image: processedImageData
+          // Bỏ user_id - hệ thống sẽ tự nhận diện
+        }),
       });
-
+      
       const result = await response.json();
-
+      
       if (response.ok) {
         setDetectionResult('success');
-        setAttendanceStatus('Điểm danh thành công!');
-        
-        // Add more detailed feedback
-        console.log('Recognition result:', result);
-        if (result.confidence_score) {
-          setAttendanceStatus(`Điểm danh thành công! Độ tin cậy: ${(result.confidence_score * 100).toFixed(1)}%`);
-        }
+        setAttendanceStatus(`Điểm danh thành công! ${result.user_name}\nĐộ tin cậy: ${(result.confidence_score * 100).toFixed(1)}%`);
       } else {
         setDetectionResult('failed');
         setAttendanceStatus(result.error);
-        console.log('Recognition failed:', result);
+        
+        // Provide helpful suggestions
+        if (result.suggestion) {
+          setAttendanceStatus(result.error + '\n\n' + result.suggestion);
+        }
       }
     } catch (error) {
       setDetectionResult('error');
-      setAttendanceStatus('Lỗi kết nối');
+      setAttendanceStatus('Lỗi kết nối. Vui lòng thử lại.');
       console.error('Connection error:', error);
     } finally {
       setIsDetecting(false);

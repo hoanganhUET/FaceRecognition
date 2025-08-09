@@ -126,8 +126,26 @@ class AdvancedFaceRecognition:
     def compare_faces_advanced(self, encoding1, encoding2):
         """Advanced face comparison with improved algorithm"""
         try:
-            features1 = pickle.loads(encoding1) if isinstance(encoding1, bytes) else encoding1
-            features2 = pickle.loads(encoding2) if isinstance(encoding2, bytes) else encoding2
+            # Ensure both encodings are properly deserialized
+            if isinstance(encoding1, bytes):
+                features1 = pickle.loads(encoding1)
+            elif isinstance(encoding1, str):
+                # Handle string encoded data
+                features1 = pickle.loads(encoding1.encode('latin-1'))
+            else:
+                features1 = encoding1
+                
+            if isinstance(encoding2, bytes):
+                features2 = pickle.loads(encoding2)
+            elif isinstance(encoding2, str):
+                # Handle string encoded data
+                features2 = pickle.loads(encoding2.encode('latin-1'))
+            else:
+                features2 = encoding2
+            
+            # Convert to numpy arrays if they aren't already
+            features1 = np.array(features1, dtype=np.float64)
+            features2 = np.array(features2, dtype=np.float64)
             
             if self.use_face_recognition and len(features1) == 128 and len(features2) == 128:
                 # Use face_recognition's distance calculation for 128D encodings
@@ -166,26 +184,54 @@ class AdvancedFaceRecognition:
             return 0.0
     
     def recognize_face_advanced(self, base64_image, known_encodings, threshold=0.6):
-        """Advanced face recognition"""
+        """Advanced face recognition with multiple validation steps"""
         try:
             # Extract features from input image
             test_encoding = self.encode_face_advanced(base64_image)
+            
+            # Validate image quality first
+            image = self.decode_base64_image(base64_image)
+            if not self._validate_image_quality(image):
+                raise ValueError("Chất lượng ảnh không đủ tốt để nhận diện")
             
             best_match_score = 0.0
             best_match_index = -1
             scores = []
             
-            # Compare against all known encodings
+            # Compare against all known encodings with weighted scoring
             for i, known_encoding in enumerate(known_encodings):
-                score = self.compare_faces_advanced(test_encoding, known_encoding)
-                scores.append(score)
-                
-                if score > best_match_score:
-                    best_match_score = score
-                    best_match_index = i
+                try:
+                    # Ensure known_encoding is properly formatted
+                    if isinstance(known_encoding, bytes):
+                        known_encoding = pickle.loads(known_encoding)
+                    elif isinstance(known_encoding, str):
+                        known_encoding = pickle.loads(known_encoding.encode('latin-1'))
+                    
+                    # Convert to numpy array
+                    known_encoding = np.array(known_encoding, dtype=np.float64)
+                    test_encoding_array = np.array(test_encoding, dtype=np.float64)
+                    
+                    # Calculate similarity score
+                    face_distance = face_recognition.face_distance([known_encoding], test_encoding_array)[0]
+                    similarity_score = 1 - face_distance  # Convert distance to similarity
+                    
+                    # Apply confidence weighting
+                    weighted_score = self._apply_confidence_weighting(similarity_score, test_encoding_array, known_encoding)
+                    scores.append(weighted_score)
+                    
+                    if weighted_score > best_match_score:
+                        best_match_score = weighted_score
+                        best_match_index = i
+                        
+                except Exception as e:
+                    print(f"Error processing encoding {i}: {e}")
+                    scores.append(0.0)
+                    continue
             
-            # Lower threshold for better recognition
-            if best_match_score >= 0.4:  # Reduced from 0.6 to 0.4
+            # Dynamic threshold based on image quality and lighting
+            dynamic_threshold = self._calculate_dynamic_threshold(image, threshold)
+            
+            if best_match_score >= dynamic_threshold:
                 return best_match_index, best_match_score
             else:
                 return None, best_match_score
@@ -193,13 +239,104 @@ class AdvancedFaceRecognition:
         except Exception as e:
             raise ValueError(f"Face recognition failed: {str(e)}")
     
-    def encode_face_advanced(self, base64_image):
-        """Advanced face encoding"""
-        image = self.decode_base64_image(base64_image)
-        features = self.extract_face_features_advanced(image)
+    def _validate_image_quality(self, image):
+        """Validate image quality for better recognition"""
+        # Check image sharpness (Laplacian variance)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        variance = cv2.Laplacian(gray, cv2.CV_64F).var()
         
-        # Serialize features to bytes
-        return pickle.dumps(features)
+        # Check brightness
+        mean_brightness = np.mean(gray)
+        
+        # Check contrast
+        contrast = gray.std()
+        
+        return (variance > 100 and  # Not too blurry
+                20 < mean_brightness < 200 and  # Not too dark/bright
+                contrast > 30)  # Sufficient contrast
+
+    def _apply_confidence_weighting(self, similarity_score, test_encoding, known_encoding):
+        """Apply confidence weighting based on encoding quality"""
+        # Calculate encoding strength (how distinctive the features are)
+        encoding_strength = np.std(test_encoding) + np.std(known_encoding)
+        weight = min(1.2, max(0.8, encoding_strength / 0.1))
+        
+        return similarity_score * weight
+
+    def _calculate_dynamic_threshold(self, image, base_threshold):
+        """Calculate dynamic threshold based on image conditions"""
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        # Adjust threshold based on lighting conditions
+        mean_brightness = np.mean(gray)
+        if mean_brightness < 50:  # Dark image
+            return base_threshold * 0.85
+        elif mean_brightness > 200:  # Bright image
+            return base_threshold * 0.9
+        else:
+            return base_threshold
+    
+    def preprocess_image(self, image):
+        """Enhanced image preprocessing for better recognition"""
+        # Convert to RGB if needed
+        if len(image.shape) == 3 and image.shape[2] == 3:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        
+        # Histogram equalization for better contrast
+        if len(image.shape) == 3:
+            # Convert to LAB color space
+            lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)
+            lab[:,:,0] = cv2.equalizeHist(lab[:,:,0])
+            image = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+        
+        # Noise reduction
+        image = cv2.bilateralFilter(image, 9, 75, 75)
+        
+        # Sharpening
+        kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+        image = cv2.filter2D(image, -1, kernel)
+        
+        return image
+
+    def encode_face_advanced(self, base64_image):
+        """Enhanced face encoding with preprocessing"""
+        try:
+            # Decode image
+            image = self.decode_base64_image(base64_image)
+            
+            # Preprocess image
+            processed_image = self.preprocess_image(image)
+            
+            # Detect faces with multiple methods
+            face_locations = face_recognition.face_locations(processed_image, model="hog")
+            
+            if len(face_locations) == 0:
+                # Try with CNN model as fallback
+                face_locations = face_recognition.face_locations(processed_image, model="cnn")
+            
+            if len(face_locations) == 0:
+                raise ValueError("Không phát hiện được khuôn mặt trong ảnh")
+            elif len(face_locations) > 1:
+                # Choose the largest face
+                face_locations = [max(face_locations, key=lambda x: (x[2]-x[0])*(x[1]-x[3]))]
+            
+            # Generate encoding with higher precision
+            face_encodings = face_recognition.face_encodings(
+                processed_image, 
+                face_locations, 
+                num_jitters=5,  # Increased for better accuracy
+                model="large"   # Use large model for better features
+            )
+            
+            if len(face_encodings) == 0:
+                raise ValueError("Không thể tạo encoding từ khuôn mặt")
+            
+            # Ensure encoding is returned as numpy array with correct dtype
+            encoding = np.array(face_encodings[0], dtype=np.float64)
+            return encoding
+        
+        except Exception as e:
+            raise ValueError(f"Lỗi khi encode khuôn mặt: {str(e)}")
     
     def decode_base64_image(self, base64_string):
         """Decode base64 image to OpenCV format"""
@@ -212,6 +349,46 @@ class AdvancedFaceRecognition:
         # Convert to OpenCV format
         opencv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
         return opencv_image
+    
+    def encode_face_for_registration(self, base64_image):
+        """Optimized face encoding for account registration - Fast version"""
+        try:
+            # Decode image
+            image = self.decode_base64_image(base64_image)
+            
+            # Simple validation
+            if image is None or image.size == 0:
+                raise ValueError("Ảnh không hợp lệ")
+            
+            # Convert BGR to RGB once
+            rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            
+            # Use HOG model only (much faster than CNN)
+            face_locations = face_recognition.face_locations(rgb_image, model="hog")
+            
+            if len(face_locations) == 0:
+                raise ValueError("Không phát hiện được khuôn mặt trong ảnh")
+            elif len(face_locations) > 1:
+                # Choose the largest face
+                face_locations = [max(face_locations, key=lambda x: (x[2]-x[0])*(x[1]-x[3]))]
+            
+            # Generate encoding with minimal jitters for speed
+            face_encodings = face_recognition.face_encodings(
+                rgb_image, 
+                face_locations, 
+                num_jitters=1,  # Reduced from 5 to 1 for speed
+                model="small"   # Use small model for faster processing
+            )
+            
+            if len(face_encodings) == 0:
+                raise ValueError("Không thể tạo encoding từ khuôn mặt")
+            
+            # Return encoding as numpy array
+            encoding = np.array(face_encodings[0], dtype=np.float64)
+            return encoding
+        
+        except Exception as e:
+            raise ValueError(f"Lỗi khi encode khuôn mặt: {str(e)}")
     
     # Legacy methods for backward compatibility
     def encode_face(self, base64_image):

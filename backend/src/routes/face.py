@@ -6,6 +6,7 @@ import os
 import uuid
 from datetime import datetime
 import base64
+import pickle
 
 face_bp = Blueprint('face', __name__)
 
@@ -76,41 +77,69 @@ def upload_face():
         return jsonify({'error': str(e)}), 500
 
 @face_bp.route('/face/recognize', methods=['POST'])
-@require_auth
 def recognize_face():
     try:
-        user_id = session.get('user_id')
-        user = User.query.get(user_id)
-        
-        if not user:
-            return jsonify({'error': 'User không tồn tại'}), 404
-        
-        # Get image data from request
         data = request.get_json()
         image_data = data.get('image')
         
         if not image_data:
             return jsonify({'error': 'Không có dữ liệu ảnh'}), 400
         
-        # Check if user has face data registered
-        user_face_data = FaceData.query.filter_by(user_id=user_id).all()
+        # Validate image quality first
+        try:
+            image = face_recognizer.decode_base64_image(image_data)
+            if not face_recognizer._validate_image_quality(image):
+                return jsonify({
+                    'error': 'Chất lượng ảnh không đủ tốt. Vui lòng chụp ảnh trong điều kiện ánh sáng tốt và giữ camera ổn định.'
+                }), 400
+        except:
+            pass
         
-        if len(user_face_data) == 0:
-            return jsonify({'error': 'Chưa đăng ký khuôn mặt. Vui lòng đăng ký trước khi điểm danh.'}), 400
+        # Lấy TẤT CẢ dữ liệu khuôn mặt từ database
+        all_face_data = FaceData.query.all()
+        
+        if len(all_face_data) == 0:
+            return jsonify({'error': 'Không có dữ liệu khuôn mặt nào trong hệ thống.'}), 400
         
         try:
-            # Get known encodings for this user
-            known_encodings = [face.face_encoding for face in user_face_data]
+            # Tạo danh sách tất cả encodings và user_ids tương ứng
+            known_encodings = []
+            user_ids = []
             
-            # Perform face recognition
-            match_index, confidence_score = face_recognizer.recognize_face(
-                image_data, known_encodings, threshold=0.5
+            for face_data in all_face_data:
+                known_encodings.append(face_data.face_encoding)
+                user_ids.append(face_data.user_id)
+            
+            # Thực hiện nhận diện với tất cả khuôn mặt
+            match_index, confidence_score = face_recognizer.recognize_face_advanced(
+                image_data, known_encodings, threshold=0.65
             )
             
             if match_index is not None:
-                # Face recognized successfully
+                # Lấy user_id của người được nhận diện
+                matched_user_id = user_ids[match_index]
+                user = User.query.get(matched_user_id)
+                
+                if not user:
+                    return jsonify({'error': 'User không tồn tại'}), 404
+                
+                # Kiểm tra điểm danh trùng lặp (cùng ngày)
+                today = datetime.now().date()
+                existing_attendance = Attendance.query.filter(
+                    Attendance.user_id == matched_user_id,
+                    Attendance.check_in_time >= today
+                ).first()
+                
+                if existing_attendance:
+                    return jsonify({
+                        'error': f'{user.full_name} đã điểm danh hôm nay rồi.',
+                        'existing_attendance': existing_attendance.to_dict(),
+                        'user_name': user.full_name
+                    }), 400
+                
+                # Tạo bản ghi điểm danh thành công
                 attendance = Attendance(
-                    user_id=user_id,
+                    user_id=matched_user_id,
                     status='present',
                     confidence_score=confidence_score
                 )
@@ -121,19 +150,21 @@ def recognize_face():
                 return jsonify({
                     'message': 'Điểm danh thành công',
                     'attendance': attendance.to_dict(),
-                    'confidence_score': confidence_score
+                    'confidence_score': confidence_score,
+                    'user_name': user.full_name,
+                    'user_id': matched_user_id
                 }), 201
             else:
                 return jsonify({
-                    'error': f'Không nhận diện được khuôn mặt. Độ tin cậy: {confidence_score:.2f}. Vui lòng thử lại.'
+                    'error': f'Không nhận diện được khuôn mặt. Độ tin cậy: {confidence_score:.2f}. Người này có thể chưa đăng ký khuôn mặt.',
+                    'suggestion': 'Hãy đảm bảo khuôn mặt được chiếu sáng đều và nhìn thẳng vào camera.'
                 }), 400
                 
         except ValueError as e:
             return jsonify({'error': str(e)}), 400
-        
+            
     except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': f'Lỗi hệ thống: {str(e)}'}), 500
 
 @face_bp.route('/face/test-recognition', methods=['POST'])
 def test_recognition():
@@ -271,4 +302,71 @@ def validate_image():
             
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@face_bp.route('/face/upload-for-registration', methods=['POST'])
+@require_auth
+def upload_face_for_registration():
+    """Fast face upload for student registration"""
+    try:
+        data = request.get_json()
+        base64_image = data.get('image')
+        
+        if not base64_image:
+            return jsonify({'error': 'Thiếu dữ liệu ảnh'}), 400
+        
+        user_id = session.get('user_id')
+        user = User.query.get(user_id)
+        
+        if not user:
+            return jsonify({'error': 'User không tồn tại'}), 404
+        
+        # Use optimized encoding function
+        try:
+            face_encoding = face_recognizer.encode_face_for_registration(base64_image)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        
+        # Decode and save image file
+        try:
+            # Remove data:image/jpeg;base64, prefix if present
+            if ',' in base64_image:
+                image_data_clean = base64_image.split(',')[1]
+            else:
+                image_data_clean = base64_image
+            
+            image_bytes = base64.b64decode(image_data_clean)
+        except Exception as e:
+            return jsonify({'error': 'Dữ liệu ảnh không hợp lệ'}), 400
+        
+        # Create uploads directory if it doesn't exist
+        import uuid
+        upload_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'uploads', 'faces')
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        # Generate unique filename
+        filename = f"{user_id}_{uuid.uuid4().hex}.jpg"
+        image_path = os.path.join(upload_dir, filename)
+        
+        # Save image file
+        with open(image_path, 'wb') as f:
+            f.write(image_bytes)
+        
+        # Serialize encoding
+        encoding_bytes = pickle.dumps(face_encoding)
+        
+        # Save to database with image_path
+        face_data = FaceData(
+            user_id=user_id,
+            face_encoding=encoding_bytes,
+            image_path=image_path
+        )
+        
+        db.session.add(face_data)
+        db.session.commit()
+        
+        return jsonify({'message': 'Upload ảnh thành công'}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Lỗi server: {str(e)}'}), 500
 

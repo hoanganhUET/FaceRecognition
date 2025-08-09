@@ -15,6 +15,7 @@ function CreateAccount({ onClose }) {
   });
   const [showCamera, setShowCamera] = useState(false);
   const [capturedImage, setCapturedImage] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     setRole('');
@@ -49,52 +50,79 @@ function CreateAccount({ onClose }) {
     await validateImageHasFace(file);
   };
 
+  const handleCameraCapture = async (imageData) => {
+    setCapturedImage(imageData);
+    setShowCamera(false);
+    
+    // Tạo preview cho ảnh chụp
+    setImagePreview(imageData);
+    
+    // Validate captured image với delay nhỏ để đảm bảo state đã update
+    setTimeout(() => {
+      validateImageHasFace(imageData, true);
+    }, 100);
+  };
+
   const validateImageHasFace = async (file, isBase64 = false) => {
     setIsValidatingImage(true);
     setImageValidationResult(null);
     
     try {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const base64Image = isBase64 ? file : e.target.result;
-        
-        const response = await fetch('http://localhost:5001/api/face/validate-image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ image: base64Image })
+      let base64Image;
+      
+      if (isBase64) {
+        base64Image = file;
+      } else {
+        // Convert file to base64
+        const reader = new FileReader();
+        const base64Promise = new Promise((resolve) => {
+          reader.onload = (e) => resolve(e.target.result);
+          reader.readAsDataURL(file);
         });
-        
-        const result = await response.json();
-        
-        if (response.ok) {
-          setImageValidationResult({
-            valid: true,
-            message: 'Ảnh hợp lệ - Đã phát hiện khuôn mặt'
-          });
-        } else {
-          setImageValidationResult({
-            valid: false,
-            message: result.error || 'Ảnh không hợp lệ'
-          });
-        }
-      };
-      reader.readAsDataURL(file);
-    } catch (error) {
-      setImageValidationResult({
-        valid: false,
-        message: 'Lỗi khi kiểm tra ảnh'
+        base64Image = await base64Promise;
+      }
+      
+      // Thêm timeout cho validation
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
+      const response = await fetch('http://localhost:5001/api/face/validate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ image: base64Image }),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
+      const result = await response.json();
+      
+      if (response.ok) {
+        setImageValidationResult({
+          valid: true,
+          message: 'Ảnh hợp lệ - Đã phát hiện khuôn mặt'
+        });
+      } else {
+        setImageValidationResult({
+          valid: false,
+          message: result.error || 'Ảnh không hợp lệ hoặc không phát hiện được khuôn mặt'
+        });
+      }
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        setImageValidationResult({
+          valid: false,
+          message: 'Timeout khi kiểm tra ảnh. Vui lòng thử lại.'
+        });
+      } else {
+        setImageValidationResult({
+          valid: false,
+          message: 'Lỗi khi kiểm tra ảnh'
+        });
+      }
     } finally {
       setIsValidatingImage(false);
     }
-  };
-
-  const handleCameraCapture = (imageData) => {
-    setCapturedImage(imageData);
-    setShowCamera(false);
-    // Validate captured image
-    validateImageHasFace(imageData, true);
   };
 
   const handleSubmit = async () => {
@@ -121,7 +149,6 @@ function CreateAccount({ onClose }) {
         studentId = generateStudentId();
       }
       
-      // Kiểm tra ảnh cho học sinh
       if (!capturedImage && !imageFile) {
         alert('Vui lòng thêm ảnh cho học sinh!');
         return;
@@ -134,14 +161,17 @@ function CreateAccount({ onClose }) {
     }
     
     try {
-      // 1. Tạo tài khoản trước - Sửa logic endpoint
+      // Show loading indicator
+      setIsSubmitting(true);
+      
+      // 1. Tạo tài khoản trước
       let endpoint;
       if (role === 'student') {
         endpoint = 'http://localhost:5001/api/admin/students';
       } else if (role === 'teacher') {
         endpoint = 'http://localhost:5001/api/admin/teachers';
       } else if (role === 'admin') {
-        endpoint = 'http://localhost:5001/api/admin/admins'; // Cần tạo endpoint này
+        endpoint = 'http://localhost:5001/api/admin/admins';
       }
       
       const payload = {
@@ -163,10 +193,10 @@ function CreateAccount({ onClose }) {
       const data = await response.json();
       
       if (response.ok) {
-        // 2. Nếu là học sinh và có ảnh, upload ảnh
+        // 2. Nếu là học sinh và có ảnh, upload ảnh với endpoint tối ưu
         if (role === 'student' && (capturedImage || imageFile)) {
           try {
-            // Đăng nhập với tài khoản vừa tạo để upload ảnh
+            // Đăng nhập với tài khoản vừa tạo
             const loginResponse = await fetch('http://localhost:5001/api/auth/login', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -178,20 +208,31 @@ function CreateAccount({ onClose }) {
             });
             
             if (loginResponse.ok) {
-              // Upload ảnh
+              // Upload ảnh với endpoint tối ưu
               const imageToUpload = capturedImage || imagePreview;
-              const uploadResponse = await fetch('http://localhost:5001/api/face/upload', {
+              
+              // Upload ảnh với timeout protection
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
+              
+              const uploadResponse = await fetch('http://localhost:5001/api/face/upload-for-registration', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ image: imageToUpload })
+                body: JSON.stringify({ image: imageToUpload }),
+                signal: controller.signal
               });
               
+              clearTimeout(timeoutId);
+              
               if (uploadResponse.ok) {
-                alert(`Tài khoản ${role} đã được tạo thành công và ảnh đã được upload!\nUsername: ${payload.username}\nPassword: default123${role === 'student' ? '\nStudent ID: ' + studentId : ''}`);
+                alert(`Tài khoản học sinh đã được tạo thành công!\nUsername: ${payload.username}\nPassword: default123\nStudent ID: ${studentId}`);
               } else {
-                alert(`Tài khoản đã tạo thành công nhưng upload ảnh thất bại.\nUsername: ${payload.username}\nPassword: default123`);
+                const uploadError = await uploadResponse.json();
+                alert(`Tài khoản đã tạo thành công nhưng upload ảnh thất bại: ${uploadError.error}\nUsername: ${payload.username}\nPassword: default123`);
               }
+            } else {
+              alert(`Tài khoản đã tạo thành công nhưng không thể đăng nhập để upload ảnh.\nUsername: ${payload.username}\nPassword: default123`);
             }
           } catch (uploadError) {
             console.error('Upload error:', uploadError);
@@ -208,13 +249,37 @@ function CreateAccount({ onClose }) {
     } catch (error) {
       console.error('Network error:', error);
       alert('Lỗi kết nối server');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <div style={{ padding: '20px', border: '1px solid #ccc',  position: 'fixed',top: '50%',left: '50%',
+    <div style={{ padding: '20px', border: '1px solid #ccc', position: 'fixed', top: '50%', left: '50%',
     transform: 'translate(-50%, -50%)', borderRadius: '5px', backgroundColor: '#f9f9f9', maxWidth: '400px'}}>
       <h2>Tạo tài khoản mới</h2>
+      
+      {isSubmitting && (
+        <div style={{ 
+          position: 'absolute', 
+          top: 0, 
+          left: 0, 
+          right: 0, 
+          bottom: 0, 
+          backgroundColor: 'rgba(255,255,255,0.8)', 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          borderRadius: '5px',
+          zIndex: 1000
+        }}>
+          <div style={{ textAlign: 'center' }}>
+            <div>Đang tạo tài khoản...</div>
+            <div style={{ fontSize: '12px', marginTop: '5px' }}>Vui lòng chờ...</div>
+          </div>
+        </div>
+      )}
+      
       <form>
         <div style={{ marginBottom: '10px' }}>
           <label>Họ tên: </label>
@@ -339,18 +404,19 @@ function CreateAccount({ onClose }) {
         
         <button
           type="button"
+          onClick={handleSubmit}
+          disabled={isSubmitting}
           style={{
-            padding: '5px 10px',
-            backgroundColor: '#4CAF50',
+            padding: '10px 20px',
+            backgroundColor: isSubmitting ? '#ccc' : '#007bff',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
-            cursor: 'pointer',
+            cursor: isSubmitting ? 'not-allowed' : 'pointer',
             marginRight: '10px'
           }}
-          onClick={handleSubmit}
         >
-          Tạo
+          {isSubmitting ? 'Đang tạo...' : 'Tạo tài khoản'}
         </button>
         
         <button

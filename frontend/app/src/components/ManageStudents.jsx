@@ -50,6 +50,51 @@
 //     }
 //   };
 
+//   const handleUpdateStudent = async () => {
+//     const formData = new FormData();
+//     for (let key in editData) {
+//       formData.append(key, editData[key]);
+//     }
+//     if (newImage) {
+//       formData.append('avatar', newImage);
+//     }
+
+//     try {
+//       const response = await fetch(
+//         `http://localhost:5001/api/admin/students/${selectedStudent.id}`,
+//         {
+//           method: 'PUT',
+//           credentials: 'include',
+//           body: formData,
+//         }
+//       );
+
+//       if (response.ok) {
+//         alert('Cập nhật thành công!');
+//         setSelectedStudent(null);
+//         fetchStudents();
+//       } else {
+//         const data = await response.json();
+//         alert(`Lỗi: ${data.error}`);
+//       }
+//     } catch (error) {
+//       console.error('Error updating student:', error);
+//       alert('Lỗi kết nối server');
+//     }
+//   };
+
+//   const openEditPopup = (student) => {
+//     setSelectedStudent(student);
+//     setEditData({
+//       full_name: student.full_name,
+//       username: student.username,
+//       class_name: student.class_name || '',
+//       student_id: student.student_id,
+//       school: student.school || '',
+//     });
+//     setNewImage(null);
+//   };
+
 //   if (loading) {
 //     return <div>Đang tải...</div>;
 //   }
@@ -175,23 +220,40 @@ function ManageStudents() {
   };
 
   const handleUpdateStudent = async () => {
-    const formData = new FormData();
-    for (let key in editData) {
-      formData.append(key, editData[key]);
-    }
-    if (newImage) {
-      formData.append("avatar", newImage);
-    }
-
     try {
-      const response = await fetch(
-        `http://localhost:5001/api/admin/students/${selectedStudent.id}`,
-        {
-          method: "PUT",
-          credentials: "include",
-          body: formData,
+      let response;
+      
+      // Nếu có file ảnh mới, sử dụng FormData
+      if (newImage) {
+        const formData = new FormData();
+        for (let key in editData) {
+          formData.append(key, editData[key]);
         }
-      );
+        formData.append("avatar", newImage);
+        
+        response = await fetch(
+          `http://localhost:5001/api/admin/students/${selectedStudent.id}`,
+          {
+            method: "PUT",
+            credentials: "include",
+            body: formData,
+            // Không set Content-Type header khi dùng FormData
+          }
+        );
+      } else {
+        // Nếu không có file ảnh, sử dụng JSON
+        response = await fetch(
+          `http://localhost:5001/api/admin/students/${selectedStudent.id}`,
+          {
+            method: "PUT",
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(editData),
+          }
+        );
+      }
 
       if (response.ok) {
         alert("Cập nhật thành công!");
