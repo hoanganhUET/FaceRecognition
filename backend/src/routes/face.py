@@ -29,7 +29,15 @@ def upload_face():
         
         try:
             # Extract face features using our face recognition service
-            face_encoding = face_recognizer.encode_face(image_data)
+            result = face_recognizer.encode_face_advanced(image_data)
+            
+            if len(result) == 2:
+                # New version with coordinates
+                face_encoding, face_coordinates = result
+            else:
+                # Fallback for older version
+                face_encoding = result
+                face_coordinates = None
         except ValueError as e:
             return jsonify({'error': str(e)}), 400
         
@@ -67,10 +75,15 @@ def upload_face():
         db.session.add(face_data)
         db.session.commit()
         
-        return jsonify({
+        response_data = {
             'message': 'Upload khuôn mặt thành công',
             'face_data': face_data.to_dict()
-        }), 201
+        }
+        
+        if face_coordinates:
+            response_data['face_coordinates'] = face_coordinates
+            
+        return jsonify(response_data), 201
         
     except Exception as e:
         db.session.rollback()
@@ -111,9 +124,17 @@ def recognize_face():
                 user_ids.append(face_data.user_id)
             
             # Thực hiện nhận diện với tất cả khuôn mặt
-            match_index, confidence_score = face_recognizer.recognize_face_advanced(
+            match_result = face_recognizer.recognize_face_advanced(
                 image_data, known_encodings, threshold=0.65
             )
+            
+            # Unpack results - now includes face coordinates
+            if len(match_result) == 3:
+                match_index, confidence_score, face_coordinates = match_result
+            else:
+                # Fallback for older version compatibility
+                match_index, confidence_score = match_result
+                face_coordinates = None
             
             if match_index is not None:
                 # Lấy user_id của người được nhận diện
@@ -152,12 +173,14 @@ def recognize_face():
                     'attendance': attendance.to_dict(),
                     'confidence_score': confidence_score,
                     'user_name': user.full_name,
-                    'user_id': matched_user_id
+                    'user_id': matched_user_id,
+                    'face_coordinates': face_coordinates
                 }), 201
             else:
                 return jsonify({
                     'error': f'Không nhận diện được khuôn mặt. Độ tin cậy: {confidence_score:.2f}. Người này có thể chưa đăng ký khuôn mặt.',
-                    'suggestion': 'Hãy đảm bảo khuôn mặt được chiếu sáng đều và nhìn thẳng vào camera.'
+                    'suggestion': 'Hãy đảm bảo khuôn mặt được chiếu sáng đều và nhìn thẳng vào camera.',
+                    'face_coordinates': face_coordinates
                 }), 400
                 
         except ValueError as e:
@@ -274,6 +297,60 @@ def debug_recognition():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@face_bp.route('/face/detect', methods=['POST'])
+def detect_face():
+    """Detect faces in image and return coordinates for drawing rectangles"""
+    try:
+        data = request.get_json()
+        image_data = data.get('image')
+        
+        if not image_data:
+            return jsonify({'error': 'Không có dữ liệu ảnh'}), 400
+        
+        try:
+            # Detect faces and get coordinates
+            face_detection_result = face_recognizer.detect_faces_with_coordinates(image_data)
+            
+            return jsonify({
+                'message': f'Phát hiện {len(face_detection_result["faces"])} khuôn mặt',
+                'faces': face_detection_result['faces'],
+                'image_width': face_detection_result['image_width'],
+                'image_height': face_detection_result['image_height']
+            }), 200
+            
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@face_bp.route('/face/detect-realtime', methods=['POST'])
+def detect_face_realtime():
+    """Detect faces optimized for real-time processing"""
+    try:
+        data = request.get_json()
+        image_data = data.get('image')
+        
+        if not image_data:
+            return jsonify({'error': 'Không có dữ liệu ảnh'}), 400
+        
+        try:
+            # Use optimized real-time detection
+            face_detection_result = face_recognizer.detect_faces_realtime_optimized(image_data)
+            
+            return jsonify({
+                'message': f'Phát hiện {len(face_detection_result["faces"])} khuôn mặt',
+                'faces': face_detection_result['faces'],
+                'image_width': face_detection_result['image_width'],
+                'image_height': face_detection_result['image_height']
+            }), 200
+            
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @face_bp.route('/face/validate-image', methods=['POST'])
 @require_auth
 def validate_image():
@@ -287,12 +364,22 @@ def validate_image():
         
         try:
             # Try to encode face - if successful, face is detected
-            face_encoding = face_recognizer.encode_face(image_data)
+            result = face_recognizer.encode_face_for_registration(image_data)
             
-            return jsonify({
-                'message': 'Ảnh hợp lệ - Đã phát hiện khuôn mặt',
-                'face_detected': True
-            }), 200
+            if len(result) == 2:
+                # New version with coordinates
+                face_encoding, face_coordinates = result
+                return jsonify({
+                    'message': 'Ảnh hợp lệ - Đã phát hiện khuôn mặt',
+                    'face_detected': True,
+                    'face_coordinates': face_coordinates
+                }), 200
+            else:
+                # Fallback for older version
+                return jsonify({
+                    'message': 'Ảnh hợp lệ - Đã phát hiện khuôn mặt',
+                    'face_detected': True
+                }), 200
             
         except ValueError as e:
             return jsonify({
@@ -322,7 +409,7 @@ def upload_face_for_registration():
         
         # Use optimized encoding function
         try:
-            face_encoding = face_recognizer.encode_face_for_registration(base64_image)
+            face_encoding, face_coordinates = face_recognizer.encode_face_for_registration(base64_image)
         except ValueError as e:
             return jsonify({'error': str(e)}), 400
         
@@ -364,7 +451,10 @@ def upload_face_for_registration():
         db.session.add(face_data)
         db.session.commit()
         
-        return jsonify({'message': 'Upload ảnh thành công'}), 200
+        return jsonify({
+            'message': 'Upload ảnh thành công',
+            'face_coordinates': face_coordinates
+        }), 200
         
     except Exception as e:
         db.session.rollback()

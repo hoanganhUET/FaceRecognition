@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import CameraCapture from './CameraCapture';
+import ImageWithFaceDetection from './ImageWithFaceDetection';
 
 function CreateAccount({ onClose }) {
   const [role, setRole] = useState('');
@@ -7,6 +8,7 @@ function CreateAccount({ onClose }) {
   const [imagePreview, setImagePreview] = useState(null);
   const [isValidatingImage, setIsValidatingImage] = useState(false);
   const [imageValidationResult, setImageValidationResult] = useState(null);
+  const [faceCoordinates, setFaceCoordinates] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     class: '',
@@ -102,6 +104,11 @@ function CreateAccount({ onClose }) {
           valid: true,
           message: 'Ảnh hợp lệ - Đã phát hiện khuôn mặt'
         });
+        
+        // Store face coordinates for drawing rectangle
+        if (result.face_coordinates) {
+          setFaceCoordinates(result.face_coordinates);
+        }
       } else {
         setImageValidationResult({
           valid: false,
@@ -193,46 +200,30 @@ function CreateAccount({ onClose }) {
       const data = await response.json();
       
       if (response.ok) {
-        // 2. Nếu là học sinh và có ảnh, upload ảnh với endpoint tối ưu
+        // 2. Nếu là học sinh và có ảnh, upload ảnh với endpoint admin
         if (role === 'student' && (capturedImage || imageFile)) {
           try {
-            // Đăng nhập với tài khoản vừa tạo
-            const loginResponse = await fetch('http://localhost:5001/api/auth/login', {
+            const imageToUpload = capturedImage || imagePreview;
+            
+            // Upload ảnh với timeout protection sử dụng endpoint admin
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
+            
+            const uploadResponse = await fetch(`http://localhost:5001/api/admin/students/${data.student.id}/upload-image`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               credentials: 'include',
-              body: JSON.stringify({
-                username: payload.username,
-                password: payload.password
-              })
+              body: JSON.stringify({ image: imageToUpload }),
+              signal: controller.signal
             });
             
-            if (loginResponse.ok) {
-              // Upload ảnh với endpoint tối ưu
-              const imageToUpload = capturedImage || imagePreview;
-              
-              // Upload ảnh với timeout protection
-              const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
-              
-              const uploadResponse = await fetch('http://localhost:5001/api/face/upload-for-registration', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ image: imageToUpload }),
-                signal: controller.signal
-              });
-              
-              clearTimeout(timeoutId);
-              
-              if (uploadResponse.ok) {
-                alert(`Tài khoản học sinh đã được tạo thành công!\nUsername: ${payload.username}\nPassword: default123\nStudent ID: ${studentId}`);
-              } else {
-                const uploadError = await uploadResponse.json();
-                alert(`Tài khoản đã tạo thành công nhưng upload ảnh thất bại: ${uploadError.error}\nUsername: ${payload.username}\nPassword: default123`);
-              }
+            clearTimeout(timeoutId);
+            
+            if (uploadResponse.ok) {
+              alert(`Tài khoản học sinh đã được tạo thành công!\nUsername: ${payload.username}\nPassword: default123\nStudent ID: ${studentId}`);
             } else {
-              alert(`Tài khoản đã tạo thành công nhưng không thể đăng nhập để upload ảnh.\nUsername: ${payload.username}\nPassword: default123`);
+              const uploadError = await uploadResponse.json();
+              alert(`Tài khoản đã tạo thành công nhưng upload ảnh thất bại: ${uploadError.error}\nUsername: ${payload.username}\nPassword: default123`);
             }
           } catch (uploadError) {
             console.error('Upload error:', uploadError);
@@ -392,10 +383,10 @@ function CreateAccount({ onClose }) {
             )}
             {imagePreview && (
               <div style={{ marginTop: '10px' }}>
-                <img 
-                  src={imagePreview} 
-                  alt="Preview" 
-                  style={{ width: '100px', height: '100px', objectFit: 'cover' }}
+                <ImageWithFaceDetection
+                  imageData={imagePreview}
+                  faceCoordinates={faceCoordinates}
+                  showDetection={imageValidationResult?.valid}
                 />
               </div>
             )}

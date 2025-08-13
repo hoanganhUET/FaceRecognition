@@ -47,6 +47,91 @@ class AdvancedFaceRecognition:
             # Fallback to Haar Cascade
             return self.detect_faces(image)
     
+    def detect_faces_with_coordinates(self, base64_image):
+        """Detect faces and return coordinates for drawing rectangles"""
+        try:
+            # Decode image
+            image = self.decode_base64_image(base64_image)
+            
+            # Convert BGR to RGB
+            rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            
+            # Detect face locations
+            face_locations = face_recognition.face_locations(rgb_image, model="hog")
+            
+            # Convert to coordinates format for frontend
+            faces = []
+            for (top, right, bottom, left) in face_locations:
+                faces.append({
+                    'x': left,
+                    'y': top,
+                    'width': right - left,
+                    'height': bottom - top,
+                    'confidence': 0.9  # HOG model doesn't return confidence, so we use a default
+                })
+            
+            return {
+                'faces': faces,
+                'image_width': image.shape[1],
+                'image_height': image.shape[0]
+            }
+            
+        except Exception as e:
+            raise ValueError(f"Lỗi khi phát hiện khuôn mặt: {str(e)}")
+    
+    def detect_faces_realtime_optimized(self, base64_image):
+        """Detect faces optimized for real-time processing"""
+        try:
+            # Decode image
+            image = self.decode_base64_image(base64_image)
+            
+            # Resize image for faster processing if it's too large
+            height, width = image.shape[:2]
+            if width > 640:
+                scale = 640 / width
+                new_width = int(width * scale)
+                new_height = int(height * scale)
+                image = cv2.resize(image, (new_width, new_height))
+                # Update scale factor for coordinates
+            else:
+                scale = 1.0
+            
+            # Convert BGR to RGB
+            rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            
+            # Detect face locations using HOG (fastest method)
+            face_locations = face_recognition.face_locations(
+                rgb_image, 
+                model="hog",
+                number_of_times_to_upsample=0  # Don't upsample for speed
+            )
+            
+            # Convert to coordinates format for frontend
+            faces = []
+            for (top, right, bottom, left) in face_locations:
+                # Scale coordinates back to original size if image was resized
+                scaled_left = int(left / scale)
+                scaled_top = int(top / scale)
+                scaled_width = int((right - left) / scale)
+                scaled_height = int((bottom - top) / scale)
+                
+                faces.append({
+                    'x': scaled_left,
+                    'y': scaled_top,
+                    'width': scaled_width,
+                    'height': scaled_height,
+                    'confidence': 0.9  # HOG model doesn't return confidence, so we use a default
+                })
+            
+            return {
+                'faces': faces,
+                'image_width': int(width / scale) if scale != 1.0 else image.shape[1],
+                'image_height': int(height / scale) if scale != 1.0 else image.shape[0]
+            }
+            
+        except Exception as e:
+            raise ValueError(f"Lỗi khi phát hiện khuôn mặt: {str(e)}")
+    
     def extract_face_features_advanced(self, image):
         """Advanced feature extraction using face_recognition library"""
         if self.use_face_recognition:
@@ -186,13 +271,32 @@ class AdvancedFaceRecognition:
     def recognize_face_advanced(self, base64_image, known_encodings, threshold=0.6):
         """Advanced face recognition with multiple validation steps"""
         try:
-            # Extract features from input image
-            test_encoding = self.encode_face_advanced(base64_image)
+            # Decode image and get face coordinates
+            image = self.decode_base64_image(base64_image)
             
             # Validate image quality first
-            image = self.decode_base64_image(base64_image)
             if not self._validate_image_quality(image):
                 raise ValueError("Chất lượng ảnh không đủ tốt để nhận diện")
+            
+            # Convert BGR to RGB
+            rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            
+            # Detect faces and get locations
+            face_locations = face_recognition.face_locations(rgb_image, model="hog")
+            
+            if len(face_locations) == 0:
+                raise ValueError("Không phát hiện được khuôn mặt trong ảnh")
+            elif len(face_locations) > 1:
+                # Choose the largest face
+                face_locations = [max(face_locations, key=lambda x: (x[2]-x[0])*(x[1]-x[3]))]
+            
+            # Extract face encoding
+            face_encodings = face_recognition.face_encodings(rgb_image, face_locations, num_jitters=3, model="large")
+            
+            if len(face_encodings) == 0:
+                raise ValueError("Không thể tạo encoding từ khuôn mặt")
+            
+            test_encoding = face_encodings[0]
             
             best_match_score = 0.0
             best_match_index = -1
@@ -231,10 +335,21 @@ class AdvancedFaceRecognition:
             # Dynamic threshold based on image quality and lighting
             dynamic_threshold = self._calculate_dynamic_threshold(image, threshold)
             
+            # Get face coordinates for rectangle drawing
+            face_location = face_locations[0]
+            face_coordinates = {
+                'x': face_location[3],  # left
+                'y': face_location[0],  # top
+                'width': face_location[1] - face_location[3],  # right - left
+                'height': face_location[2] - face_location[0],  # bottom - top
+                'image_width': rgb_image.shape[1],
+                'image_height': rgb_image.shape[0]
+            }
+            
             if best_match_score >= dynamic_threshold:
-                return best_match_index, best_match_score
+                return best_match_index, best_match_score, face_coordinates
             else:
-                return None, best_match_score
+                return None, best_match_score, face_coordinates
                 
         except Exception as e:
             raise ValueError(f"Face recognition failed: {str(e)}")
@@ -333,7 +448,19 @@ class AdvancedFaceRecognition:
             
             # Ensure encoding is returned as numpy array with correct dtype
             encoding = np.array(face_encodings[0], dtype=np.float64)
-            return encoding
+            
+            # Return encoding and face coordinates for rectangle drawing
+            face_location = face_locations[0]
+            face_coordinates = {
+                'x': face_location[3],  # left
+                'y': face_location[0],  # top
+                'width': face_location[1] - face_location[3],  # right - left
+                'height': face_location[2] - face_location[0],  # bottom - top
+                'image_width': processed_image.shape[1],
+                'image_height': processed_image.shape[0]
+            }
+            
+            return encoding, face_coordinates
         
         except Exception as e:
             raise ValueError(f"Lỗi khi encode khuôn mặt: {str(e)}")
@@ -383,21 +510,39 @@ class AdvancedFaceRecognition:
             if len(face_encodings) == 0:
                 raise ValueError("Không thể tạo encoding từ khuôn mặt")
             
-            # Return encoding as numpy array
+            # Return encoding as numpy array and face coordinates
             encoding = np.array(face_encodings[0], dtype=np.float64)
-            return encoding
-        
+            
+            # Get face coordinates for rectangle drawing
+            face_location = face_locations[0]
+            face_coordinates = {
+                'x': face_location[3],  # left
+                'y': face_location[0],  # top
+                'width': face_location[1] - face_location[3],  # right - left
+                'height': face_location[2] - face_location[0],  # bottom - top
+                'image_width': rgb_image.shape[1],
+                'image_height': rgb_image.shape[0]
+            }
+            
+            return encoding, face_coordinates
+            
         except Exception as e:
             raise ValueError(f"Lỗi khi encode khuôn mặt: {str(e)}")
     
     # Legacy methods for backward compatibility
     def encode_face(self, base64_image):
         """Legacy method for backward compatibility"""
-        return self.encode_face_advanced(base64_image)
+        result = self.encode_face_advanced(base64_image)
+        if isinstance(result, tuple):
+            return result[0]  # Return only encoding for backward compatibility
+        return result
     
     def recognize_face(self, base64_image, known_encodings, threshold=0.6):
         """Legacy method for backward compatibility"""
-        return self.recognize_face_advanced(base64_image, known_encodings, threshold)
+        result = self.recognize_face_advanced(base64_image, known_encodings, threshold)
+        if len(result) == 3:
+            return result[0], result[1]  # Return only match_index and confidence for backward compatibility
+        return result
 
 # Global instance
 face_recognizer = AdvancedFaceRecognition()

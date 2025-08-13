@@ -2,8 +2,11 @@ import React, { useState, useRef, useEffect } from 'react';
 
 function CameraCapture({ onCapture, onClose }) {
   const videoRef = useRef(null);
+  const canvasRef = useRef(null);
   const [stream, setStream] = useState(null);
   const [isReady, setIsReady] = useState(false);
+  const [showFaceDetection, setShowFaceDetection] = useState(true);
+  const [detectedFaces, setDetectedFaces] = useState([]);
 
   useEffect(() => {
     startCamera();
@@ -13,6 +16,16 @@ function CameraCapture({ onCapture, onClose }) {
       }
     };
   }, []);
+
+  useEffect(() => {
+    let interval;
+    if (showFaceDetection && isReady) {
+      interval = setInterval(detectFaces, 500);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [showFaceDetection, isReady]);
 
   const startCamera = async () => {
     try {
@@ -31,6 +44,7 @@ function CameraCapture({ onCapture, onClose }) {
         // Đợi video sẵn sàng
         videoRef.current.onloadedmetadata = () => {
           setIsReady(true);
+          setupCanvas();
         };
       }
     } catch (error) {
@@ -39,9 +53,101 @@ function CameraCapture({ onCapture, onClose }) {
     }
   };
 
-  const captureImage = () => {
+  const setupCanvas = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (video && canvas) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.style.width = '400px';
+      canvas.style.height = '300px';
+    }
+  };
+
+  const detectFaces = async () => {
+    if (!videoRef.current || !canvasRef.current || !isReady) return;
+
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
+    
+    context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+    const imageData = canvas.toDataURL('image/jpeg', 0.8);
+
+    try {
+      const response = await fetch('http://localhost:5001/api/face/detect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageData }),
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok && result.faces) {
+        setDetectedFaces(result.faces);
+        drawFaceRectangles(result.faces);
+      } else {
+        setDetectedFaces([]);
+        clearCanvas();
+      }
+    } catch (error) {
+      console.error('Face detection error:', error);
+    }
+  };
+
+  const drawFaceRectangles = (faces) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    faces.forEach((face, index) => {
+      // Draw rectangle around face
+      ctx.strokeStyle = '#00ff00';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(
+        face.x,
+        face.y,
+        face.width,
+        face.height
+      );
+      
+      // Draw confidence score
+      ctx.fillStyle = '#00ff00';
+      ctx.font = '14px Arial';
+      ctx.fillText(
+        `Face ${index + 1}`,
+        face.x,
+        face.y - 5
+      );
+    });
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  };
+
+  const captureImage = async () => {
     if (!videoRef.current || !isReady) {
       alert('Camera chưa sẵn sàng. Vui lòng đợi một chút.');
+      return;
+    }
+
+    // Check if face is detected before capturing
+    if (showFaceDetection && detectedFaces.length === 0) {
+      alert('Không phát hiện khuôn mặt. Vui lòng đảm bảo khuôn mặt của bạn hiển thị rõ trong khung hình.');
+      return;
+    }
+
+    if (showFaceDetection && detectedFaces.length > 1) {
+      alert('Phát hiện nhiều khuôn mặt. Vui lòng đảm bảo chỉ có một khuôn mặt trong khung hình.');
       return;
     }
 
@@ -100,25 +206,63 @@ function CameraCapture({ onCapture, onClose }) {
         <h3>Chụp ảnh</h3>
         <div style={{ marginBottom: '10px', fontSize: '14px', color: '#666' }}>
           Hãy giữ khuôn mặt thẳng và đảm bảo ánh sáng đủ
+          {showFaceDetection && (
+            <div style={{ color: detectedFaces.length === 1 ? '#28a745' : detectedFaces.length > 1 ? '#dc3545' : '#ffc107' }}>
+              {detectedFaces.length === 0 && 'Đang tìm khuôn mặt...'}
+              {detectedFaces.length === 1 && '✓ Phát hiện 1 khuôn mặt'}
+              {detectedFaces.length > 1 && `⚠ Phát hiện ${detectedFaces.length} khuôn mặt - chỉ giữ 1 người`}
+            </div>
+          )}
         </div>
-        <video 
-          ref={videoRef} 
-          autoPlay 
-          playsInline
-          muted
-          style={{ 
-            width: '400px', 
-            height: '300px', 
-            border: '2px solid #ccc',
-            borderRadius: '5px',
-            backgroundColor: '#000'
-          }}
-        />
+        <div style={{ position: 'relative', display: 'inline-block' }}>
+          <video 
+            ref={videoRef} 
+            autoPlay 
+            playsInline
+            muted
+            style={{ 
+              width: '400px', 
+              height: '300px', 
+              border: '2px solid #ccc',
+              borderRadius: '5px',
+              backgroundColor: '#000'
+            }}
+          />
+          <canvas
+            ref={canvasRef}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '400px',
+              height: '300px',
+              pointerEvents: 'none',
+              borderRadius: '5px'
+            }}
+          />
+        </div>
         {!isReady && (
           <div style={{ marginTop: '10px', color: '#999' }}>
             Đang khởi động camera...
           </div>
         )}
+        <div style={{ marginTop: '10px' }}>
+          <button 
+            onClick={() => setShowFaceDetection(!showFaceDetection)}
+            style={{ 
+              marginBottom: '10px',
+              padding: '8px 16px',
+              backgroundColor: showFaceDetection ? '#dc3545' : '#007bff',
+              color: 'white',
+              border: 'none',
+              borderRadius: '5px',
+              cursor: 'pointer',
+              fontSize: '14px'
+            }}
+          >
+            {showFaceDetection ? 'Tắt phát hiện khuôn mặt' : 'Bật phát hiện khuôn mặt'}
+          </button>
+        </div>
         <div style={{ marginTop: '15px' }}>
           <button 
             onClick={captureImage} 

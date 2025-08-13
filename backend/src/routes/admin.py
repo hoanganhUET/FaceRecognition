@@ -386,3 +386,74 @@ def get_dashboard_stats():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@admin_bp.route('/admin/students/<int:student_id>/upload-image', methods=['POST'])
+@require_admin
+def upload_student_image(student_id):
+    """Upload ảnh cho học sinh (dành cho admin)"""
+    try:
+        student = User.query.filter_by(id=student_id, role='student').first()
+        if not student:
+            return jsonify({'error': 'Sinh viên không tồn tại'}), 404
+        
+        data = request.get_json()
+        base64_image = data.get('image')
+        if not base64_image:
+            return jsonify({'error': 'Thiếu dữ liệu ảnh'}), 400
+        
+        # Import face recognizer
+        from src.utils.face_recognition import face_recognizer
+        from src.models.user import FaceData
+        import os
+        import uuid
+        import base64
+        import pickle
+        
+        # Use optimized encoding function
+        try:
+            face_encoding, face_coordinates = face_recognizer.encode_face_for_registration(base64_image)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        
+        # Decode and save image file
+        try:
+            # Remove data:image/jpeg;base64, prefix if present
+            if ',' in base64_image:
+                image_data_clean = base64_image.split(',')[1]
+            else:
+                image_data_clean = base64_image
+            
+            image_bytes = base64.b64decode(image_data_clean)
+        except Exception as e:
+            return jsonify({'error': 'Dữ liệu ảnh không hợp lệ'}), 400
+        
+        # Create uploads directory if it doesn't exist
+        upload_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'uploads', 'faces')
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        # Generate unique filename
+        filename = f"{student_id}_{uuid.uuid4().hex}.jpg"
+        image_path = os.path.join(upload_dir, filename)
+        
+        # Save image file
+        with open(image_path, 'wb') as f:
+            f.write(image_bytes)
+        
+        # Serialize face encoding
+        face_encoding_blob = pickle.dumps(face_encoding)
+        
+        # Save face data to database
+        face_data = FaceData(
+            user_id=student_id,
+            face_encoding=face_encoding_blob,
+            image_path=image_path
+        )
+        
+        db.session.add(face_data)
+        db.session.commit()
+        
+        return jsonify({'message': 'Upload ảnh thành công'}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
