@@ -6,7 +6,7 @@ function AttendanceCalendar() {
   const [calendar, setCalendar] = useState([]);
   const [selectedDay, setSelectedDay] = useState(null);
   const [note, setNote] = useState('');
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [excuseReason, setExcuseReason] = useState('');
   const [attendanceData, setAttendanceData] = useState({});
   const [loading, setLoading] = useState(true);
 
@@ -74,11 +74,22 @@ function AttendanceCalendar() {
       for (let day = 1; day <= daysInMonth; day++) {
         const key = `${month + 1}-${day}`;
         const attendanceInfo = attendanceData[key] || { status: 'absent', time: '' };
+        
+        // Xác định màu sắc dựa trên trạng thái
+        let dayStatus = attendanceInfo.status;
+        if (dayStatus === 'pending') {
+          dayStatus = 'pending'; // Màu vàng cho đang chờ duyệt
+        } else if (attendanceInfo.teacher_approval === 'rejected') {
+          dayStatus = 'rejected'; // Màu cam cho bị từ chối
+        }
+        
         calendarDays.push({
           day,
           month: month + 1,
-          status: attendanceInfo.status,
+          status: dayStatus,
           time: attendanceInfo.time,
+          teacher_approval: attendanceInfo.teacher_approval,
+          teacher_comment: attendanceInfo.teacher_comment,
         });
       }
       
@@ -142,45 +153,48 @@ function AttendanceCalendar() {
     if (day) {
       setSelectedDay(day);
       setNote('');
-      setSelectedFile(null);
+      setExcuseReason('');
     }
   };
 
   const handleSubmit = async () => {
     if (selectedDay) {
       try {
-        // Gửi ghi chú hoặc file nếu cần thiết
-        const formData = new FormData();
-        formData.append('date', `${currentDate.getFullYear()}-${selectedDay.month}-${selectedDay.day}`);
-        formData.append('note', note);
-        
-        if (selectedFile) {
-          formData.append('file', selectedFile);
+        if (!excuseReason.trim()) {
+          alert('Vui lòng nhập lý do minh chứng');
+          return;
         }
 
-        const response = await fetch('http://localhost:5001/api/student/attendance/note', {
+        const requestData = {
+          date: `${currentDate.getFullYear()}-${selectedDay.month}-${selectedDay.day}`,
+          excuse_reason: excuseReason,
+          note: note
+        };
+
+        const response = await fetch('http://localhost:5001/api/student/attendance/excuse', {
           method: 'POST',
           credentials: 'include',
-          body: formData
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestData)
         });
 
         if (response.ok) {
-          alert('Ghi chú đã được lưu!');
+          alert('Biểu mẫu minh chứng đã được gửi và đang chờ giáo viên duyệt!');
+          // Refresh data để cập nhật trạng thái
+          fetchAttendanceData();
         } else {
           const data = await response.json();
           alert(`Lỗi: ${data.error}`);
         }
       } catch (error) {
-        console.error('Error submitting note:', error);
+        console.error('Error submitting excuse form:', error);
         alert('Lỗi kết nối server');
       }
       
       setSelectedDay(null);
     }
-  };
-
-  const handleFileChange = (e) => {
-    setSelectedFile(e.target.files[0]);
   };
 
   if (loading) {
@@ -190,6 +204,40 @@ function AttendanceCalendar() {
   return (
     <div style={{ marginLeft: '30px', padding: '20px', color: '#333' }}>
       <h1 style={{ fontSize: '24px', marginBottom: '10px',  textAlign: 'center' }}>Theo dõi điểm danh</h1>
+      
+      <div style={{ marginBottom: '15px' }}>
+        <h3 style={{ margin: '0 0 10px 0', fontSize: '16px' }}>Chú thích màu sắc:</h3>
+        <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <div style={{ 
+              width: '20px', 
+              height: '20px', 
+              backgroundColor: '#90ee90',
+              border: '1px solid #ccc'
+            }}></div>
+            <span style={{ fontSize: '14px' }}>Có mặt</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <div style={{ 
+              width: '20px', 
+              height: '20px', 
+              backgroundColor: '#ffeb3b',
+              border: '1px solid #ccc'
+            }}></div>
+            <span style={{ fontSize: '14px' }}>Chờ duyệt</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <div style={{ 
+              width: '20px', 
+              height: '20px', 
+              backgroundColor: '#ffcccc',
+              border: '1px solid #ccc'
+            }}></div>
+            <span style={{ fontSize: '14px' }}>Vắng mặt</span>
+          </div>
+        </div>
+      </div>
+      
       <div>
         <h2 style={{ fontSize: '18px', marginBottom: '5px',  textAlign: 'center' }}>
           {monthNames[displayMonth]} {currentDate.getFullYear()}
@@ -244,7 +292,10 @@ function AttendanceCalendar() {
                 height: '40px',
                 textAlign: 'center',
                 border: '1px solid #ccc',
-                backgroundColor: day === null ? 'transparent' : day.status === 'present' ? '#90ee90' : '#ffcccc',
+                backgroundColor: day === null ? 'transparent' : 
+                  day.status === 'present' ? '#90ee90' : 
+                  day.status === 'pending' ? '#ffeb3b' :
+                  day.status === 'rejected' ? '#ff9800' : '#ffcccc',
                 cursor: day ? 'pointer' : 'default',
               }}
               onClick={() => handleDayClick(day)}
@@ -271,39 +322,114 @@ function AttendanceCalendar() {
           }}
         >
           <h3>Chi tiết ngày {selectedDay.day}/{selectedDay.month}/{currentDate.getFullYear()}</h3>
-          <p>Trạng thái: {selectedDay.status === 'present' ? 'Đã điểm danh' : 'Vắng mặt'}</p>
+          <p>Trạng thái: {
+            selectedDay.status === 'present' ? 'Đã điểm danh' : 
+            selectedDay.status === 'pending' ? 'Đang chờ duyệt' : 
+            selectedDay.status === 'rejected' ? 'Yêu cầu bị từ chối' : 'Vắng mặt'
+          }</p>
           <p>Thời gian điểm danh: {selectedDay.time || 'Chưa điểm danh'}</p>
-          <textarea
-            style={{ width: '100%', margin: '10px 0', padding: '5px' }}
-            rows="3"
-            placeholder="Nhập ghi chú..."
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-          />
-          <input
-            type="file"
-            style={{ margin: '10px 0' }}
-            onChange={handleFileChange}
-          />
+          
+          {selectedDay.status === 'rejected' && (
+            <div style={{ 
+              padding: '10px', 
+              backgroundColor: '#ffebee', 
+              border: '1px solid #f44336',
+              borderRadius: '4px',
+              marginBottom: '10px'
+            }}>
+              <p style={{ margin: 0, color: '#d32f2f', fontWeight: 'bold' }}>
+                ❌ Yêu cầu minh chứng đã bị từ chối
+              </p>
+              {selectedDay.teacher_comment && (
+                <p style={{ margin: '8px 0 0 0', color: '#d32f2f' }}>
+                  <strong>Lý do từ chối:</strong> {selectedDay.teacher_comment}
+                </p>
+              )}
+              <p style={{ margin: '8px 0 0 0', color: '#666', fontSize: '12px' }}>
+                Bạn có thể gửi lại yêu cầu minh chứng mới với lý do khác.
+              </p>
+            </div>
+          )}
+          
+          {(selectedDay.status === 'absent' || selectedDay.status === 'rejected') && (
+            <>
+              <div style={{ marginBottom: '10px' }}>
+                <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+                  Lý do minh chứng: *
+                </label>
+                <textarea
+                  style={{ 
+                    width: '100%', 
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #ccc',
+                    resize: 'vertical',
+                    minHeight: '80px'
+                  }}
+                  rows="3"
+                  placeholder="Nhập lý do bạn không thể tham gia điểm danh (bắt buộc)..."
+                  value={excuseReason}
+                  onChange={(e) => setExcuseReason(e.target.value)}
+                />
+              </div>
+              
+              <div style={{ marginBottom: '10px' }}>
+                <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+                  Ghi chú thêm:
+                </label>
+                <textarea
+                  style={{ 
+                    width: '100%', 
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #ccc',
+                    resize: 'vertical'
+                  }}
+                  rows="2"
+                  placeholder="Thông tin bổ sung (không bắt buộc)..."
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                />
+              </div>
+            </>
+          )}
+          
+          {selectedDay.status === 'pending' && (
+            <div style={{ 
+              padding: '10px', 
+              backgroundColor: '#fff3cd', 
+              border: '1px solid #ffeaa7',
+              borderRadius: '4px',
+              marginBottom: '10px'
+            }}>
+              <p style={{ margin: 0, color: '#856404' }}>
+                ⏳ Biểu mẫu minh chứng đã được gửi và đang chờ giáo viên duyệt.
+              </p>
+            </div>
+          )}
+          
           <div>
+            {(selectedDay.status === 'absent' || selectedDay.status === 'rejected') && (
+              <button
+                style={{
+                  padding: '8px 15px',
+                  backgroundColor: selectedDay.status === 'rejected' ? '#ff9800' : '#4CAF50',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  marginRight: '10px',
+                  fontWeight: 'bold'
+                }}
+                onClick={handleSubmit}
+              >
+                {selectedDay.status === 'rejected' ? 'Gửi lại yêu cầu' : 'Gửi biểu mẫu minh chứng'}
+              </button>
+            )}
             <button
               style={{
-                padding: '5px 10px',
-                backgroundColor: '#4CAF50',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                marginRight: '10px',
-              }}
-              onClick={handleSubmit}
-            >
-              Gửi
-            </button>
-            <button
-              style={{
-                padding: '5px 10px',
-                backgroundColor: '#CC0000',
+                padding: '8px 15px',
+                backgroundColor: '#6c757d',
                 color: 'white',
                 border: 'none',
                 borderRadius: '4px',

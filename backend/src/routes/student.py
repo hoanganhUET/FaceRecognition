@@ -131,7 +131,11 @@ def get_student_attendance():
             key = f"{month}-{day}"
             attendance_by_day[key] = {
                 'status': att.status,
-                'time': att.check_in_time.strftime('%H:%M')
+                'time': att.check_in_time.strftime('%H:%M'),
+                'teacher_approval': att.teacher_approval,
+                'teacher_comment': att.teacher_comment,
+                'excuse_reason': att.excuse_reason,
+                'note': att.note
             }
         
         return jsonify({'attendance': attendance_by_day}), 200
@@ -173,9 +177,10 @@ def create_attendance():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-@student_bp.route('/student/attendance/note', methods=['POST'])
+@student_bp.route('/student/attendance/excuse', methods=['POST'])
 @require_auth
-def add_attendance_note():
+def submit_excuse_form():
+    """Gửi biểu mẫu minh chứng bằng text thay vì ảnh"""
     try:
         user_id = session.get('user_id')
         user = User.query.get(user_id)
@@ -183,67 +188,54 @@ def add_attendance_note():
         if not user:
             return jsonify({'error': 'User không tồn tại'}), 404
         
-        data = request.form
+        data = request.get_json()
         date_str = data.get('date')
-        note = data.get('note')
-        file = request.files.get('file')
+        excuse_reason = data.get('excuse_reason')
+        note = data.get('note', '')
         
         if not date_str:
             return jsonify({'error': 'Thiếu ngày điểm danh'}), 400
         
+        if not excuse_reason:
+            return jsonify({'error': 'Thiếu lý do minh chứng'}), 400
+        
         # Parse date
-        from datetime import datetime
         try:
             attendance_date = datetime.strptime(date_str, '%Y-%m-%d')
         except ValueError:
             return jsonify({'error': 'Ngày không hợp lệ, định dạng: YYYY-MM-DD'}), 400
         
-        # Kiểm tra xem điểm danh đã tồn tại chưa
+        # Kiểm tra xem bản ghi điểm danh đã tồn tại chưa
         attendance_record = Attendance.query.filter_by(
             user_id=user_id,
             check_in_time=attendance_date
         ).first()
         
-        if not attendance_record:
-            return jsonify({'error': 'Không tìm thấy bản ghi điểm danh'}), 404
-        
-        # Cập nhật ghi chú
-        attendance_record.note = note or ''
-        
-        # Xử lý file đính kèm (nếu có)
-        if file:
-            # Kiểm tra loại file
-            if not allowed_file(file.filename):
-                return jsonify({'error': 'Loại file không được phép'}), 400
-            
-            # Lưu file vào thư mục đính kèm
-            import os
-            from werkzeug.utils import secure_filename
-            uploads_dir = 'uploads/attendance_notes'
-            os.makedirs(uploads_dir, exist_ok=True)
-            
-            # Xóa file cũ nếu có
-            if attendance_record.file_path and os.path.exists(attendance_record.file_path):
-                os.remove(attendance_record.file_path)
-            
-            # Lưu file mới
-            filename = secure_filename(file.filename)
-            file_path = os.path.join(uploads_dir, filename)
-            file.save(file_path)
-            attendance_record.file_path = file_path
+        if attendance_record:
+            # Cập nhật bản ghi có sẵn
+            attendance_record.excuse_reason = excuse_reason
+            attendance_record.note = note
+            attendance_record.teacher_approval = 'pending'
+            attendance_record.status = 'pending'
+        else:
+            # Tạo bản ghi mới
+            attendance_record = Attendance(
+                user_id=user_id,
+                check_in_time=attendance_date,
+                status='pending',
+                excuse_reason=excuse_reason,
+                note=note,
+                teacher_approval='pending'
+            )
+            db.session.add(attendance_record)
         
         db.session.commit()
         
         return jsonify({
-            'message': 'Cập nhật ghi chú điểm danh thành công',
+            'message': 'Gửi biểu mẫu minh chứng thành công',
             'attendance_record': attendance_record.to_dict()
         }), 200
         
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
-
-def allowed_file(filename):
-    """Kiểm tra định dạng file được phép (chỉ cho phép hình ảnh và tài liệu PDF)"""
-    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS

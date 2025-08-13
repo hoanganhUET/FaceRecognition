@@ -166,3 +166,149 @@ def get_teacher_profile():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@teacher_bp.route('/teacher/attendance-requests', methods=['GET'])
+@require_auth
+def get_attendance_requests():
+    """Lấy danh sách yêu cầu minh chứng từ học sinh"""
+    try:
+        user_id = session.get('user_id')
+        teacher = User.query.get(user_id)
+        
+        if not teacher or teacher.role != 'teacher':
+            return jsonify({'error': 'Không có quyền truy cập'}), 403
+        
+        # Lấy tất cả học sinh trong lớp của giáo viên
+        students = User.query.filter_by(
+            role='student', 
+            class_name=teacher.class_name
+        ).all()
+        
+        if not students:
+            return jsonify({'requests': []}), 200
+        
+        student_ids = [s.id for s in students]
+        
+        # Lấy các yêu cầu minh chứng đang pending
+        pending_requests = Attendance.query.filter(
+            Attendance.user_id.in_(student_ids),
+            Attendance.teacher_approval == 'pending'
+        ).order_by(Attendance.created_at.desc()).all()
+        
+        requests_data = []
+        for req in pending_requests:
+            student = next(s for s in students if s.id == req.user_id)
+            requests_data.append({
+                'id': req.id,
+                'student_id': student.student_id,
+                'student_name': student.full_name,
+                'date': req.check_in_time.strftime('%Y-%m-%d'),
+                'excuse_reason': req.excuse_reason,
+                'note': req.note,
+                'submitted_at': req.created_at.isoformat()
+            })
+        
+        return jsonify({'requests': requests_data}), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@teacher_bp.route('/teacher/attendance-requests/processed', methods=['GET'])
+@require_auth
+def get_processed_attendance_requests():
+    """Lấy danh sách yêu cầu minh chứng đã được xử lý"""
+    try:
+        user_id = session.get('user_id')
+        teacher = User.query.get(user_id)
+        
+        if not teacher or teacher.role != 'teacher':
+            return jsonify({'error': 'Không có quyền truy cập'}), 403
+        
+        # Lấy tất cả học sinh trong lớp của giáo viên
+        students = User.query.filter_by(
+            role='student', 
+            class_name=teacher.class_name
+        ).all()
+        
+        if not students:
+            return jsonify({'requests': []}), 200
+        
+        student_ids = [s.id for s in students]
+        
+        # Lấy các yêu cầu minh chứng đã được xử lý (approved hoặc rejected)
+        processed_requests = Attendance.query.filter(
+            Attendance.user_id.in_(student_ids),
+            Attendance.teacher_approval.in_(['approved', 'rejected'])
+        ).order_by(Attendance.approved_at.desc()).limit(20).all()
+        
+        requests_data = []
+        for req in processed_requests:
+            student = next(s for s in students if s.id == req.user_id)
+            requests_data.append({
+                'id': req.id,
+                'student_id': student.student_id,
+                'student_name': student.full_name,
+                'date': req.check_in_time.strftime('%Y-%m-%d'),
+                'excuse_reason': req.excuse_reason,
+                'note': req.note,
+                'teacher_approval': req.teacher_approval,
+                'teacher_comment': req.teacher_comment,
+                'submitted_at': req.created_at.isoformat(),
+                'processed_at': req.approved_at.isoformat() if req.approved_at else None
+            })
+        
+        return jsonify({'requests': requests_data}), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@teacher_bp.route('/teacher/attendance-requests/<int:request_id>/approve', methods=['POST'])
+@require_auth
+def approve_attendance_request(request_id):
+    """Duyệt yêu cầu minh chứng của học sinh"""
+    try:
+        user_id = session.get('user_id')
+        teacher = User.query.get(user_id)
+        
+        if not teacher or teacher.role != 'teacher':
+            return jsonify({'error': 'Không có quyền truy cập'}), 403
+        
+        data = request.get_json()
+        approval_status = data.get('status')  # 'approved' hoặc 'rejected'
+        teacher_comment = data.get('comment', '')
+        
+        if approval_status not in ['approved', 'rejected']:
+            return jsonify({'error': 'Trạng thái duyệt không hợp lệ'}), 400
+        
+        # Tìm yêu cầu minh chứng
+        attendance_record = Attendance.query.get(request_id)
+        if not attendance_record:
+            return jsonify({'error': 'Không tìm thấy yêu cầu'}), 404
+        
+        # Kiểm tra học sinh có thuộc lớp của giáo viên không
+        student = User.query.get(attendance_record.user_id)
+        if not student or student.class_name != teacher.class_name:
+            return jsonify({'error': 'Không có quyền duyệt yêu cầu này'}), 403
+        
+        # Cập nhật trạng thái duyệt
+        attendance_record.teacher_approval = approval_status
+        attendance_record.teacher_comment = teacher_comment
+        attendance_record.approved_by = user_id
+        attendance_record.approved_at = datetime.utcnow()
+        
+        # Cập nhật status dựa trên kết quả duyệt
+        if approval_status == 'approved':
+            attendance_record.status = 'present'  # Xác nhận có mặt
+        else:
+            attendance_record.status = 'absent'   # Xác nhận vắng mặt
+        
+        db.session.commit()
+        
+        return jsonify({
+            'message': f'Yêu cầu đã được {approval_status}',
+            'attendance_record': attendance_record.to_dict()
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
