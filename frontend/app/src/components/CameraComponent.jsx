@@ -8,7 +8,7 @@ function CameraComponent() {
   const [detectionResult, setDetectionResult] = useState(null);
   const [attendanceStatus, setAttendanceStatus] = useState(null);
   const [debugInfo, setDebugInfo] = useState(null);
-  const [faceDetectionActive, setFaceDetectionActive] = useState(false);
+  const [faceDetectionActive, setFaceDetectionActive] = useState(true); // Auto-start face detection
   const [detectedFaces, setDetectedFaces] = useState([]);
 
   useEffect(() => {
@@ -29,9 +29,10 @@ function CameraComponent() {
           // Start face detection after camera is ready
           video.onloadedmetadata = () => {
             setupCanvas();
-            if (faceDetectionActive) {
+            // Auto-start face detection
+            setTimeout(() => {
               startFaceDetection();
-            }
+            }, 1000); // Wait 1 second for camera to fully initialize
           };
         } catch (error) {
           console.error('Lỗi khi truy cập camera:', error.name, error.message);
@@ -69,10 +70,7 @@ function CameraComponent() {
     const ctx = canvasElement.getContext('2d');
     ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
     
-    // Get the scale factors between video dimensions and displayed dimensions
-    const videoRect = videoElement.getBoundingClientRect();
-    const scaleX = canvasElement.width / videoRect.width;
-    const scaleY = canvasElement.height / videoRect.height;
+    console.log('Drawing faces:', faces); // Debug log
     
     faces.forEach((face, index) => {
       // Draw rectangle around face
@@ -102,26 +100,15 @@ function CameraComponent() {
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
     
-    // Use smaller resolution for real-time detection (better performance)
-    const maxWidth = 320; // Reduce resolution for better performance
+    // Use video's actual dimensions for canvas
     const videoWidth = videoRef.current.videoWidth;
     const videoHeight = videoRef.current.videoHeight;
     
-    let canvasWidth, canvasHeight;
-    if (videoWidth > maxWidth) {
-      const scale = maxWidth / videoWidth;
-      canvasWidth = maxWidth;
-      canvasHeight = videoHeight * scale;
-    } else {
-      canvasWidth = videoWidth;
-      canvasHeight = videoHeight;
-    }
+    canvas.width = videoWidth;
+    canvas.height = videoHeight;
     
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
-    
-    context.drawImage(videoRef.current, 0, 0, canvasWidth, canvasHeight);
-    const imageData = canvas.toDataURL('image/jpeg', 0.5); // Lower quality for speed
+    context.drawImage(videoRef.current, 0, 0, videoWidth, videoHeight);
+    const imageData = canvas.toDataURL('image/jpeg', 0.8); // Better quality
 
     try {
       const response = await fetch('http://localhost:5001/api/face/detect', {
@@ -131,22 +118,11 @@ function CameraComponent() {
       });
       
       const result = await response.json();
+      console.log('Face detection result:', result); // Debug log
       
       if (response.ok && result.faces && result.faces.length > 0) {
-        // Scale face coordinates back to original video size if needed
-        const scaleX = videoWidth / canvasWidth;
-        const scaleY = videoHeight / canvasHeight;
-        
-        const scaledFaces = result.faces.map(face => ({
-          ...face,
-          x: face.x * scaleX,
-          y: face.y * scaleY,
-          width: face.width * scaleX,
-          height: face.height * scaleY
-        }));
-        
-        setDetectedFaces(scaledFaces);
-        drawFaceRectangles(scaledFaces, videoRef.current, canvasRef.current);
+        setDetectedFaces(result.faces);
+        drawFaceRectangles(result.faces, videoRef.current, canvasRef.current);
       } else {
         setDetectedFaces([]);
         // Clear canvas if no faces detected
@@ -160,13 +136,14 @@ function CameraComponent() {
   };
 
   const startFaceDetection = () => {
+    console.log('Starting face detection...'); // Debug log
     setFaceDetectionActive(true);
     if (detectionIntervalRef.current) {
       clearInterval(detectionIntervalRef.current);
     }
     detectionIntervalRef.current = setInterval(() => {
       detectFaces();
-    }, 1500); // Slower interval: 1.5 seconds for better performance
+    }, 1000); // Faster interval: 1 second for better responsiveness
   };
 
   const stopFaceDetection = () => {

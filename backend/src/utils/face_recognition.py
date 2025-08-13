@@ -52,6 +52,7 @@ class AdvancedFaceRecognition:
         try:
             # Decode image
             image = self.decode_base64_image(base64_image)
+            original_height, original_width = image.shape[:2]
             
             # Convert BGR to RGB
             rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -59,24 +60,29 @@ class AdvancedFaceRecognition:
             # Detect face locations
             face_locations = face_recognition.face_locations(rgb_image, model="hog")
             
+            print(f"Detected {len(face_locations)} faces in image {original_width}x{original_height}")  # Debug
+            
             # Convert to coordinates format for frontend
             faces = []
-            for (top, right, bottom, left) in face_locations:
-                faces.append({
+            for i, (top, right, bottom, left) in enumerate(face_locations):
+                face_data = {
                     'x': left,
                     'y': top,
                     'width': right - left,
                     'height': bottom - top,
-                    'confidence': 0.9  # HOG model doesn't return confidence, so we use a default
-                })
+                    'confidence': 0.95  # HOG model doesn't return confidence, so we use a high default
+                }
+                print(f"Face {i+1}: x={face_data['x']}, y={face_data['y']}, w={face_data['width']}, h={face_data['height']}")  # Debug
+                faces.append(face_data)
             
             return {
                 'faces': faces,
-                'image_width': image.shape[1],
-                'image_height': image.shape[0]
+                'image_width': original_width,
+                'image_height': original_height
             }
             
         except Exception as e:
+            print(f"Error in detect_faces_with_coordinates: {str(e)}")  # Debug
             raise ValueError(f"Lỗi khi phát hiện khuôn mặt: {str(e)}")
     
     def detect_faces_realtime_optimized(self, base64_image):
