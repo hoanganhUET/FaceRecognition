@@ -30,36 +30,26 @@ function StudentDashboard() {
   };
 
   if (loading) {
-    return <div style={{ marginTop: '60px', marginLeft: '70px' }}>Đang tải...</div>;
-  }
+    return <div style={{ marginLeft: '0px', padding: '0px' }}>Đang tải...</div>;
+  } 
 
   return (
-    <div style={{
-      marginLeft: '30px',
-      padding: '5px',
-      color: '#333',
-      height: '100vh'
-    }}>
-    <div style={{
-      position: 'fixed',
-      top: '50px',
-      right: '70px',
-      zIndex: 1000
-    }}>
-      <LogoutComponent />
-    </div>
-    <div style={{ position: 'fixed', top: '40px', left: '80px', zIndex: 1000 }}>
-      <h1 style={{ marginBottom: '10px', fontSize: '40px' }}>
+    <div style={{ marginLeft: '0px', padding: '0px', color: '#333', minWidth:'100vw'}}>
+    <div style={{ display: 'flex', alignItems: 'center', minWidth:'100vw',marginBottom: '0px' }}>
+      <h1 style={{ fontSize: '40px', paddingLeft: '5%', paddingTop:'3%',flex: 1 }}>
         Học sinh: {userInfo?.full_name || 'N/A'}
+        <p style={{ fontSize: '25px', marginTop: '15px' }}>
+            Lớp: {userInfo?.class_name || 'Chưa có'}
+        </p>
+        <p style={{ fontSize: '25px', marginTop: '10px' }}>
+            Mã sinh viên: {userInfo?.student_id || 'N/A'}
+        </p>
       </h1>
-      <p style={{ fontSize: '20px', margin: '0' }}>
-        Lớp: {userInfo?.class_name || 'Chưa có'}
-      </p>
-      <p style={{ fontSize: '20px', margin: '0' }}>
-        Mã sinh viên: {userInfo?.student_id || 'N/A'}
-      </p>
+    <h1 style={{ paddingRight: '5%', marginLeft:'auto', marginTop: '-0.5%' }}>
+      <LogoutComponent />
+    </h1>
     </div>
-    <div style={{position: 'fixed', top: '130px', left: '450px', zIndex: 1000}}>
+    <div style={{position: 'fixed', top: '20%', left: '32%', }}>
       <AttendanceCalendar />
     </div>
   </div>

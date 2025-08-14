@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import AdminHeader from './AdminHeader';
 import AdminNavigation from './AdminNavigation';
 import CreateAccount from './CreateAccount';
 import ManageStudents from './ManageStudents';
@@ -41,18 +40,19 @@ function AdminDashboard() {
   };
 
   if (loading) {
-    return <div style={{ marginLeft: '30px', padding: '20px' }}>Đang tải...</div>;
+    return <div style={{ marginLeft: '0px', padding: '0px' }}>Đang tải...</div>;
   }
 
   return (
-    <div style={{ marginLeft: '30px', padding: '20px', color: '#333' }}>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
-        <h1 style={{ fontSize: '40px', marginRight: '710px' }}>
+    <div style={{ marginLeft: '0px', padding: '0px', color: '#333', minWidth:'100vw' }}>
+      <div style={{ display: 'flex', alignItems: 'center', minWidth:'100vw',marginBottom: '0px' }}>
+        <h1 style={{ fontSize: '40px', paddingLeft: '5%', paddingTop:'3%',flex: 1 }}>
           Admin: {userInfo?.full_name || 'N/A'}
         </h1>
-        <LogoutComponent />
+        <h1 style={{ paddingRight: '5%', paddingTop:'3%', marginLeft:'auto' }}>
+          <LogoutComponent />
+        </h1>
       </div>
-      <AdminHeader />
       <AdminNavigation
         onCreateAccount={() => setActiveSection('create')}
         onManageStudents={() => setActiveSection('students')}

@@ -37,12 +37,12 @@ function LogoutComponent() {
       onClick={handleLogout}
       style={{
         padding: '10px 20px',
-        backgroundColor: '#f44336',
+        backgroundColor: '#CC0000',
         color: 'white',
         border: 'none',
         borderRadius: '4px',
         cursor: 'pointer',
-        fontSize: '16px'
+        fontSize: '18px'
       }}
     >
       Đăng xuất

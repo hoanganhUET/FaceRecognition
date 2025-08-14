@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import LoginComponent from './LoginComponent';
 
 function CameraComponent() {
   const videoRef = useRef(null);
@@ -231,7 +232,7 @@ function CameraComponent() {
           ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
           
           // Draw failed rectangle in red
-          ctx.strokeStyle = '#ff0000';
+          ctx.strokeStyle = '#CC0000';
           ctx.lineWidth = 4;
           ctx.strokeRect(
             result.face_coordinates.x,
@@ -241,7 +242,7 @@ function CameraComponent() {
           );
           
           // Draw failed label
-          ctx.fillStyle = '#ff0000';
+          ctx.fillStyle = '#CC0000';
           ctx.font = 'bold 16px Arial';
           ctx.fillText(
             '✗ Không nhận diện được',
@@ -296,82 +297,109 @@ function CameraComponent() {
     <div
       id="videoContainer"
       style={{
-        width: '560px',
-        height: '560px',
-        position: 'absolute',
-        top: '40px',
-        left: '50px',
+        display: 'flex',
+        flexDirection: 'row',
+        boxSizing: 'border-box',
+        width: '100%',
+        height: '100vh',
+        minHeight: '600px',
+        maxHeight:'100vh',
+        margin:'0px',
       }}
     >
-      <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-        <video
-          ref={videoRef}
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          autoPlay
-          muted
-          playsInline
-        />
-        <canvas
-          ref={canvasRef}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            pointerEvents: 'none'
-          }}
-        />
+      {/* Camera + Nút bấm */}
+      <div style={{ flex: '1 0 50%', minWidth: '50vw', maxWidth: '50vw',paddingRight: '20px', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', }}>
+        <div style={{
+          position: 'relative',
+          width: '100%',
+          height: 'calc(100% - 60px)', // Dành chỗ cho nút bấm
+          minHeight: '300px',
+          overflow: 'hidden', // Ngăn co giãn
+        }}>
+          <video
+            ref={videoRef}
+            style={{ width: '95%', height: '95%',marginTop: '30px', marginLeft:'30px', borderRadius: '30px', objectFit: 'cover' }}
+            autoPlay
+            muted
+            playsInline
+          />
+          <canvas
+            ref={canvasRef}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              pointerEvents: 'none'
+            }}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: '5px', marginTop: '5px', justifyContent: 'center' }}>
+          <button onClick={captureAndRecognize} disabled={isDetecting}>
+            {isDetecting ? 'Đang nhận diện...' : 'Điểm danh'}
+          </button>
+          <button 
+            onClick={faceDetectionActive ? stopFaceDetection : startFaceDetection}
+            style={{ marginLeft: '5px', backgroundColor: faceDetectionActive ? '#CC0000' : '#007bff' }}
+          >
+            {faceDetectionActive ? 'Tắt phát hiện khuôn mặt' : 'Bật phát hiện khuôn mặt'}
+          </button>
+          <button onClick={debugRecognition} style={{ marginLeft: '5px' }}>
+            Debug Recognition
+          </button>
+        </div>
       </div>
-      <div>
-        {isDetecting && <p>Đang nhận diện...</p>}
-        {detectionResult === 'success' && <p style={{ color: 'green' }}>{attendanceStatus}</p>}
-        {detectionResult === 'failed' && <p style={{ color: 'red' }}>{attendanceStatus}</p>}
-        {detectionResult === 'error' && <p style={{ color: 'orange' }}>{attendanceStatus}</p>}
-        
-        {faceDetectionActive && (
-          <p style={{ color: 'blue' }}>
-            Phát hiện {detectedFaces.length} khuôn mặt
-          </p>
+
+      {/* Phần đăng nhập và thông báo */}
+      <div style={{ flex: '1 0 50%', minWidth: '50vw', maxWidth: '50vw',display: 'flex', flexDirection: 'column',boxSizing: 'border-box', }}>
+        <LoginComponent />
+        <div style={{ marginTop: '100px', flex: '1', 
+            paddingBottom: '80px', 
+            paddingRight:'40px',
+            display: 'flex', 
+            flexDirection: 'column', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            whiteSpace: 'normal', 
+            overflowWrap: 'break-word', 
+            textAlign: 'center' }}>
+          {isDetecting && <p style={{ color: 'red' }}>Đang nhận diện...</p>}
+          {detectionResult === 'failed' && <p style={{ color: 'red' }}>{attendanceStatus}</p>}
+          {detectionResult === 'success' && <p style={{ color: 'green' }}>{attendanceStatus}</p>}
+          {detectionResult === 'error' && <p style={{ color: 'orange' }}>{attendanceStatus}</p>}
+          {faceDetectionActive && (
+            <p style={{ color: 'blue', marginTop: '10px' }}>
+              Phát hiện: {detectedFaces.length} khuôn mặt
+            </p>
+          )}
+          {debugInfo && (
+      <div style={{ 
+        marginTop: '5px', 
+        maxWidth: '90%', 
+        boxSizing: 'border-box', 
+        color: 'black',
+        overflow: 'auto', 
+        textAlign: 'left' 
+      }}>
+        <h4>Debug Information:</h4>
+        <p>Registered faces: {debugInfo.registered_faces}</p>
+        <p>Best score: {(debugInfo.best_score * 100).toFixed(1)}%</p>
+        <p>Recognition result: {debugInfo.recognition_result?.match_found ? 'Success' : 'Failed'}</p>
+        {debugInfo.scores && (
+          <div>
+            <p>Individual scores:</p>
+            {debugInfo.scores.map((score, index) => (
+              <div key={index}>
+                Face {index}: {(score.similarity_score * 100).toFixed(1)}%
+              </div>
+            ))}
+          </div>
         )}
       </div>
-      
-      <div style={{ marginTop: '10px' }}>
-        <button onClick={captureAndRecognize} disabled={isDetecting}>
-          {isDetecting ? 'Đang nhận diện...' : 'Điểm danh'}
-        </button>
-        
-        <button 
-          onClick={faceDetectionActive ? stopFaceDetection : startFaceDetection}
-          style={{ marginLeft: '10px', backgroundColor: faceDetectionActive ? '#dc3545' : '#007bff' }}
-        >
-          {faceDetectionActive ? 'Tắt phát hiện khuôn mặt' : 'Bật phát hiện khuôn mặt'}
-        </button>
-        
-        <button onClick={debugRecognition} style={{ marginLeft: '10px' }}>
-          Debug Recognition
-        </button>
+    )}
       </div>
-      
-      {/* Debug information display */}
-      {debugInfo && (
-        <div style={{ marginTop: '10px', padding: '10px', background: '#f0f0f0' }}>
-          <h4>Debug Information:</h4>
-          <p>Registered faces: {debugInfo.registered_faces}</p>
-          <p>Best score: {(debugInfo.best_score * 100).toFixed(1)}%</p>
-          <p>Recognition result: {debugInfo.recognition_result?.match_found ? 'Success' : 'Failed'}</p>
-          {debugInfo.scores && (
-            <div>
-              <p>Individual scores:</p>
-              {debugInfo.scores.map((score, index) => (
-                <div key={index}>
-                  Face {index}: {(score.similarity_score * 100).toFixed(1)}%
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      </div>
     </div>
   );
 }

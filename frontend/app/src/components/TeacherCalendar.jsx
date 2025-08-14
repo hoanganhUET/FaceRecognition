@@ -106,9 +106,9 @@ function TeacherCalendar() {
 
   return (
     <div style={{ marginLeft: '30px', padding: '20px', color: '#333' }}>
-      <h1 style={{ fontSize: '24px', marginBottom: '10px',textAlign: 'center' }}>Theo dõi điểm danh học sinh</h1>
+      <h1 style={{ fontSize: '30px', marginBottom: '10px',textAlign: 'center' }}>Theo dõi điểm danh học sinh</h1>
       <div>
-        <h2 style={{ fontSize: '18px', marginBottom: '5px',textAlign: 'center' }}>
+        <h2 style={{ fontSize: '25px', marginBottom: '5px',textAlign: 'center' }}>
           {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
         </h2>
          <button
@@ -125,7 +125,7 @@ function TeacherCalendar() {
           <img
             src="/back.png"
             alt="Trước"
-            style={{ width: '30px', height: '30px' }}
+            style={{ width: '40px', height: '40px' }}
           />
         </button>
         <button
@@ -135,7 +135,7 @@ function TeacherCalendar() {
             backgroundColor: 'transparent',
             border: 'none',
             cursor: 'pointer',
-            marginLeft: '210px',
+            marginLeft: '480px',
           }}
           onClick={goNextMonth}
           disabled={loading}
@@ -143,11 +143,11 @@ function TeacherCalendar() {
           <img
             src="/next.png"
             alt="Sau"
-            style={{ width: '30px', height: '30px' }}
+            style={{ width: '40px', height: '40px' }}
           />
         </button>
         
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 40px)', gap: '5px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 80px)', gap: '7px' }}>
           {['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'].map((day) => (
             <div key={day} style={{ fontWeight: 'bold', textAlign: 'center' }}>
               {day}
@@ -157,8 +157,8 @@ function TeacherCalendar() {
             <div
               key={index}
               style={{
-                width: '40px',
-                height: '40px',
+                width: '80px',
+                height: '80px',
                 textAlign: 'center',
                 border: '1px solid #ccc',
                 backgroundColor: day === null ? 'transparent' : day.hasAttendance ? '#90ee90' : 'transparent',

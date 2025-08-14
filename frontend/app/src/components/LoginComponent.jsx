@@ -52,7 +52,7 @@ function LoginComponent() {
     >
       <div 
         id="loginTitle" 
-        style={{ fontSize: '45px', fontWeight: 'bold', color: '#333', marginBottom: '10px', marginLeft: '95px', }}
+        style={{ fontSize: '50px', fontWeight: 'bold', color: '#333', marginBottom: '10px', marginLeft: '95px', }}
       >
         Đăng nhập
       </div>

@@ -203,11 +203,11 @@ function AttendanceCalendar() {
 
   return (
     <div style={{ marginLeft: '30px', padding: '20px', color: '#333' }}>
-      <h1 style={{ fontSize: '24px', marginBottom: '10px',  textAlign: 'center' }}>Theo dõi điểm danh</h1>
+      <h1 style={{ fontSize: '30px', marginBottom: '10px',  textAlign: 'center' }}>Theo dõi điểm danh</h1>
       
       <div style={{ marginBottom: '15px' }}>
-        <h3 style={{ margin: '0 0 10px 0', fontSize: '16px' }}>Chú thích màu sắc:</h3>
-        <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+        {/* <h3 style={{ margin: '0 0 10px 0', fontSize: '16px' }}>Chú thích màu sắc:</h3> */}
+        <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', justifyContent: 'center'}}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
             <div style={{ 
               width: '20px', 
@@ -215,7 +215,7 @@ function AttendanceCalendar() {
               backgroundColor: '#90ee90',
               border: '1px solid #ccc'
             }}></div>
-            <span style={{ fontSize: '14px' }}>Có mặt</span>
+            <span style={{ fontSize: '20px' }}>Có mặt</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
             <div style={{ 
@@ -224,7 +224,7 @@ function AttendanceCalendar() {
               backgroundColor: '#ffeb3b',
               border: '1px solid #ccc'
             }}></div>
-            <span style={{ fontSize: '14px' }}>Chờ duyệt</span>
+            <span style={{ fontSize: '20px' }}>Chờ duyệt</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
             <div style={{ 
@@ -233,13 +233,13 @@ function AttendanceCalendar() {
               backgroundColor: '#ffcccc',
               border: '1px solid #ccc'
             }}></div>
-            <span style={{ fontSize: '14px' }}>Vắng mặt</span>
+            <span style={{ fontSize: '20px' }}>Vắng mặt</span>
           </div>
         </div>
       </div>
       
       <div>
-        <h2 style={{ fontSize: '18px', marginBottom: '5px',  textAlign: 'center' }}>
+        <h2 style={{ fontSize: '25px', marginBottom: '5px',  textAlign: 'center' }}>
           {monthNames[displayMonth]} {currentDate.getFullYear()}
         </h2>
         <button
@@ -256,7 +256,7 @@ function AttendanceCalendar() {
           <img
             src="/back.png"
             alt="Trước"
-            style={{ width: '30px', height: '30px' }}
+            style={{ width: '40px', height: '40px' }}
           />
         </button>
         <button
@@ -266,7 +266,7 @@ function AttendanceCalendar() {
             backgroundColor: 'transparent',
             border: 'none',
             cursor: 'pointer',
-            marginLeft: '210px',
+            marginLeft: '480px',
           }}
           onClick={goNextMonth}
           disabled={loading}
@@ -274,11 +274,11 @@ function AttendanceCalendar() {
           <img
             src="/next.png"
             alt="Sau"
-            style={{ width: '30px', height: '30px' }}
+            style={{ width: '40px', height: '40px' }}
           />
         </button>
         
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 40px)', gap: '5px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 80px)', gap: '7px' }}>
           {['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'].map((day) => (
             <div key={day} style={{ fontWeight: 'bold', textAlign: 'center' }}>
               {day}
@@ -288,8 +288,8 @@ function AttendanceCalendar() {
             <div
               key={index}
               style={{
-                width: '40px',
-                height: '40px',
+                width: '80px',
+                height: '80px',
                 textAlign: 'center',
                 border: '1px solid #ccc',
                 backgroundColor: day === null ? 'transparent' : 

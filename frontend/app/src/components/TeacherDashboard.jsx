@@ -96,40 +96,30 @@ function TeacherDashboard() {
   };
 
   if (loading) {
-    return <div style={{ marginTop: '60px', marginLeft: '70px' }}>Đang tải...</div>;
+    return <div style={{ marginTop: '0px', marginLeft: '0px' }}>Đang tải...</div>;
   }
 
   return (
-    <div style={{
-      marginLeft: '30px',
-      padding: '5px',
-      color: '#333',
-      height: '100vh'
-    }}>
-    <div style={{
-        position: 'fixed',
-        top: '50px',
-        right: '70px',
-        zIndex: 1000
-    }}>
-      <LogoutComponent />
-    </div>
-    <div style={{ position: 'fixed', top: '40px', left: '80px', zIndex: 1000 }}>
-      <h1 style={{ marginBottom: '10px', fontSize: '40px' }}>
+    <div style={{ marginLeft: '0px', padding: '0px', color: '#333', minWidth:'100vw'}}>
+    <div style={{ display: 'flex', alignItems: 'center', minWidth:'100vw',marginBottom: '0px' }}>
+      <h1 style={{ fontSize: '40px', paddingLeft: '5%', paddingTop:'3%',flex: 1 }}>
         Giáo viên: {userInfo?.full_name || 'N/A'}
+        <p style={{ fontSize: '25px', marginTop: '15px' }}>
+          Lớp phụ trách: {userInfo?.class_name || 'Chưa có'}
+        </p>
       </h1>
-      <p style={{ marginTop: '10px', fontSize: '20px' }}>
-        Lớp phụ trách: {userInfo?.class_name || 'Chưa có'}
-      </p>
+      <h1 style={{ paddingRight: '5%', marginLeft:'auto', marginTop: '-0.5%' }}>
+      <LogoutComponent />
+    </h1>
     </div>
-    <div style={{position: 'fixed', top: '130px', left: '300px', zIndex: 1000}}>
+    <div style={{position: 'fixed', top: '20%', left: '15%', }}>
       <TeacherCalendar />
     </div>
     {/* Ô bên phải: yêu cầu điểm danh */}
       <div style={{
         position: 'fixed',
-        top: '155px',
-        right: '70px',
+        top: '20%',
+        left: '65%',
         width: '400px',
         maxHeight: '500px',
         overflowY: 'auto',
