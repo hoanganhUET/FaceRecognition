@@ -3,7 +3,7 @@
 ## 📋 Mô tả
 
 Hệ thống điểm danh thông minh sử dụng công nghệ nhận diện khuôn mặt để tự động hóa quá trình điểm danh trong môi trường giáo dục. Hệ thống hỗ trợ nhiều vai trò người dùng (Admin, Giáo viên, Học sinh) với giao diện web thân thiện và API RESTful.
-
+Link Docker Hub:https://hub.docker.com/r/hoanganhuet/detection-app
 ## ✨ Tính năng chính
 
 ### 🎯 Nhận diện khuôn mặt
