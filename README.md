@@ -268,7 +268,7 @@ MIT License - xem file [LICENSE](LICENSE) để biết thêm chi tiết.
 
 ## 📞 Liên hệ
 
-- **Tác giả**: hoanganhUET
+- **Tác giả**: hoanganhUET, abcdSayHi1907 (Thanh Huyền)
 - **Email**: [email@example.com]
 - **GitHub**: https://github.com/hoanganhUET/FaceRecognition
 
