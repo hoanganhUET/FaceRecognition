@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify, session
-from src.models.user import db, User, Attendance
+from src.models.user import db, User, Attendance, FaceData
 from src.routes.auth import require_admin
 from datetime import datetime
 
@@ -70,30 +70,114 @@ def update_student(student_id):
         if not student:
             return jsonify({'error': 'Sinh viên không tồn tại'}), 404
         
-        data = request.get_json()
-        
-        # Check if new username or student_id conflicts with existing users
-        if data.get('username') and data['username'] != student.username:
-            existing = User.query.filter_by(username=data['username']).first()
-            if existing:
-                return jsonify({'error': 'Username đã tồn tại'}), 400
-            student.username = data['username']
-        
-        if data.get('student_id') and data['student_id'] != student.student_id:
-            existing = User.query.filter_by(student_id=data['student_id']).first()
-            if existing:
-                return jsonify({'error': 'Mã sinh viên đã tồn tại'}), 400
-            student.student_id = data['student_id']
-        
-        # Update other fields
-        if data.get('full_name'):
-            student.full_name = data['full_name']
-        if data.get('class_name'):
-            student.class_name = data['class_name']
-        if data.get('school'):
-            student.school = data['school']
-        if data.get('password'):
-            student.set_password(data['password'])
+        # Check if request contains files (FormData) or JSON
+        if request.content_type and 'multipart/form-data' in request.content_type:
+            # Handle FormData (when updating with image)
+            data = request.form.to_dict()
+            avatar_file = request.files.get('avatar')
+            
+            # Update student information
+            if data.get('username') and data['username'] != student.username:
+                existing = User.query.filter_by(username=data['username']).first()
+                if existing:
+                    return jsonify({'error': 'Username đã tồn tại'}), 400
+                student.username = data['username']
+            
+            if data.get('student_id') and data['student_id'] != student.student_id:
+                existing = User.query.filter_by(student_id=data['student_id']).first()
+                if existing:
+                    return jsonify({'error': 'Mã sinh viên đã tồn tại'}), 400
+                student.student_id = data['student_id']
+            
+            # Update other fields
+            if data.get('full_name'):
+                student.full_name = data['full_name']
+            if data.get('class_name'):
+                student.class_name = data['class_name']
+            if data.get('school'):
+                student.school = data['school']
+            if data.get('password'):
+                student.set_password(data['password'])
+            
+            # Handle avatar upload and face recognition
+            if avatar_file:
+                try:
+                    # Import necessary modules
+                    from src.utils.face_recognition import face_recognizer
+                    import os
+                    import uuid
+                    import base64
+                    import pickle
+                    
+                    # Read and encode the image
+                    image_bytes = avatar_file.read()
+                    base64_image = base64.b64encode(image_bytes).decode('utf-8')
+                    base64_image = f"data:image/jpeg;base64,{base64_image}"
+                    
+                    # Validate face in image
+                    face_encoding, face_coordinates = face_recognizer.encode_face_for_registration(base64_image)
+                    
+                    # Delete old face data if exists
+                    old_face_data = FaceData.query.filter_by(user_id=student_id).all()
+                    for old_data in old_face_data:
+                        if os.path.exists(old_data.image_path):
+                            os.remove(old_data.image_path)
+                        db.session.delete(old_data)
+                    
+                    # Create uploads directory if it doesn't exist
+                    upload_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'uploads', 'faces')
+                    os.makedirs(upload_dir, exist_ok=True)
+                    
+                    # Generate unique filename
+                    filename = f"{student_id}_{uuid.uuid4().hex}.jpg"
+                    image_path = os.path.join(upload_dir, filename)
+                    
+                    # Save image file
+                    with open(image_path, 'wb') as f:
+                        f.write(image_bytes)
+                    
+                    # Serialize face encoding
+                    face_encoding_blob = pickle.dumps(face_encoding)
+                    
+                    # Save new face data to database
+                    face_data = FaceData(
+                        user_id=student_id,
+                        face_encoding=face_encoding_blob,
+                        image_path=image_path
+                    )
+                    
+                    db.session.add(face_data)
+                    
+                except ValueError as e:
+                    return jsonify({'error': f'Lỗi xử lý ảnh: {str(e)}'}), 400
+                except Exception as e:
+                    return jsonify({'error': f'Lỗi upload ảnh: {str(e)}'}), 500
+        else:
+            # Handle JSON data (when updating without image)
+            data = request.get_json()
+            
+            # Check if new username or student_id conflicts with existing users
+            if data.get('username') and data['username'] != student.username:
+                existing = User.query.filter_by(username=data['username']).first()
+                if existing:
+                    return jsonify({'error': 'Username đã tồn tại'}), 400
+                student.username = data['username']
+            
+            if data.get('student_id') and data['student_id'] != student.student_id:
+                existing = User.query.filter_by(student_id=data['student_id']).first()
+                if existing:
+                    return jsonify({'error': 'Mã sinh viên đã tồn tại'}), 400
+                student.student_id = data['student_id']
+            
+            # Update other fields
+            if data.get('full_name'):
+                student.full_name = data['full_name']
+            if data.get('class_name'):
+                student.class_name = data['class_name']
+            if data.get('school'):
+                student.school = data['school']
+            if data.get('password'):
+                student.set_password(data['password'])
         
         student.updated_at = datetime.utcnow()
         db.session.commit()

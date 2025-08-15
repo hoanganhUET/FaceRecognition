@@ -29,7 +29,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Make start script executable
+# Convert line endings and make start script executable
+RUN sed -i 's/\r$//' start.sh
 RUN chmod +x start.sh
 
 # Create uploads directory

@@ -7,6 +7,8 @@ function ManageStudents() {
   const [selectedStudent, setSelectedStudent] = useState(null); // học sinh được click
   const [editData, setEditData] = useState({}); // dữ liệu đang sửa
   const [newImage, setNewImage] = useState(null); // file ảnh mới
+  const [isValidatingImage, setIsValidatingImage] = useState(false); // trạng thái validate ảnh
+  const [imageValidationResult, setImageValidationResult] = useState(null); // kết quả validate
 
   useEffect(() => {
     fetchStudents();
@@ -31,6 +33,58 @@ function ManageStudents() {
       console.error("Error fetching students:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const validateImageHasFace = async (file) => {
+    if (!file) return;
+    
+    setIsValidatingImage(true);
+    setImageValidationResult(null);
+    
+    try {
+      // Convert file to base64
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const base64Image = e.target.result;
+        
+        try {
+          const response = await fetch('http://localhost:5001/api/face/validate-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ image: base64Image })
+          });
+          
+          const result = await response.json();
+          
+          if (response.ok) {
+            setImageValidationResult({
+              valid: true,
+              message: 'Ảnh hợp lệ - Đã phát hiện khuôn mặt'
+            });
+          } else {
+            setImageValidationResult({
+              valid: false,
+              message: result.error || 'Ảnh không hợp lệ hoặc không phát hiện được khuôn mặt'
+            });
+          }
+        } catch (error) {
+          setImageValidationResult({
+            valid: false,
+            message: 'Lỗi khi kiểm tra ảnh'
+          });
+        } finally {
+          setIsValidatingImage(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      setImageValidationResult({
+        valid: false,
+        message: 'Lỗi khi đọc file ảnh'
+      });
+      setIsValidatingImage(false);
     }
   };
 
@@ -61,6 +115,18 @@ function ManageStudents() {
 
   const handleUpdateStudent = async () => {
     try {
+      // Kiểm tra validation ảnh nếu có ảnh mới
+      if (newImage) {
+        if (imageValidationResult && !imageValidationResult.valid) {
+          alert('Ảnh không hợp lệ hoặc không phát hiện được khuôn mặt!');
+          return;
+        }
+        if (isValidatingImage) {
+          alert('Đang kiểm tra ảnh, vui lòng đợi...');
+          return;
+        }
+      }
+
       let response;
       
       // Nếu có file ảnh mới, sử dụng FormData
@@ -119,6 +185,8 @@ function ManageStudents() {
       school: student.school || "",
     });
     setNewImage(null);
+    setImageValidationResult(null);
+    setIsValidatingImage(false);
   };
 
   if (loading) return <div>Đang tải...</div>;
@@ -221,7 +289,12 @@ function ManageStudents() {
           }}
         >
           <button
-            onClick={() => setSelectedStudent(null)}
+            onClick={() => {
+              setSelectedStudent(null);
+              setImageValidationResult(null);
+              setIsValidatingImage(false);
+              setNewImage(null);
+            }}
             style={{
               float: "right",
               background: "#CC0000",
@@ -284,9 +357,31 @@ function ManageStudents() {
             Thay đổi ảnh học sinh:{" "}
             <input
               type="file"
-              onChange={(e) => setNewImage(e.target.files[0])}
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files[0];
+                setNewImage(file);
+                setImageValidationResult(null);
+                if (file) {
+                  validateImageHasFace(file);
+                }
+              }}
             />
           </label>
+          {isValidatingImage && (
+            <div style={{ color: 'blue', fontSize: '12px', marginTop: '5px' }}>
+              Đang kiểm tra ảnh...
+            </div>
+          )}
+          {imageValidationResult && (
+            <div style={{ 
+              color: imageValidationResult.valid ? 'green' : 'red', 
+              fontSize: '12px', 
+              marginTop: '5px' 
+            }}>
+              {imageValidationResult.message}
+            </div>
+          )}
           <br />
           <button
             onClick={handleUpdateStudent}
