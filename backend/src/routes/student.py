@@ -95,36 +95,147 @@ def delete_face_data(face_id):
 
 @student_bp.route('/student/attendance', methods=['GET'])
 @require_auth
-def get_attendance():
+def get_student_attendance():
+    """Lấy dữ liệu điểm danh của học sinh"""
     try:
         user_id = session.get('user_id')
+        student = User.query.get(user_id)
         
-        # Get query parameters for filtering
-        date_from = request.args.get('date_from')
-        date_to = request.args.get('date_to')
+        if not student or student.role != 'student':
+            return jsonify({'error': 'Không có quyền truy cập'}), 403
         
-        query = Attendance.query.filter_by(user_id=user_id)
+        year = request.args.get('year', type=int)
+        month = request.args.get('month', type=int)
         
-        if date_from:
-            try:
-                date_from_obj = datetime.fromisoformat(date_from)
-                query = query.filter(Attendance.check_in_time >= date_from_obj)
-            except ValueError:
-                return jsonify({'error': 'Định dạng date_from không hợp lệ'}), 400
+        if not year or not month:
+            return jsonify({'error': 'Thiếu tham số year hoặc month'}), 400
         
-        if date_to:
-            try:
-                date_to_obj = datetime.fromisoformat(date_to)
-                query = query.filter(Attendance.check_in_time <= date_to_obj)
-            except ValueError:
-                return jsonify({'error': 'Định dạng date_to không hợp lệ'}), 400
+        # Lấy dữ liệu điểm danh trong tháng
+        from datetime import datetime
+        start_date = datetime(year, month, 1)
+        if month == 12:
+            end_date = datetime(year + 1, 1, 1)
+        else:
+            end_date = datetime(year, month + 1, 1)
         
-        attendance_records = query.order_by(Attendance.check_in_time.desc()).all()
+        attendances = Attendance.query.filter(
+            Attendance.user_id == user_id,
+            Attendance.check_in_time >= start_date,
+            Attendance.check_in_time < end_date
+        ).all()
         
-        return jsonify({
-            'attendance_records': [record.to_dict() for record in attendance_records]
-        }), 200
+        # Tổ chức dữ liệu theo ngày
+        attendance_by_day = {}
+        for att in attendances:
+            day = att.check_in_time.day
+            key = f"{month}-{day}"
+            attendance_by_day[key] = {
+                'status': att.status,
+                'time': att.check_in_time.strftime('%H:%M'),
+                'teacher_approval': att.teacher_approval,
+                'teacher_comment': att.teacher_comment,
+                'excuse_reason': att.excuse_reason,
+                'note': att.note
+            }
+        
+        return jsonify({'attendance': attendance_by_day}), 200
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@student_bp.route('/student/attendance', methods=['POST'])
+@require_auth
+def create_attendance():
+    try:
+        user_id = session.get('user_id')
+        user = User.query.get(user_id)
+        
+        if not user:
+            return jsonify({'error': 'User không tồn tại'}), 404
+        
+        data = request.get_json()
+        
+        # Validate required fields
+        if 'check_in_time' not in data:
+            return jsonify({'error': 'Thiếu thời gian điểm danh'}), 400
+        
+        attendance_record = Attendance(
+            user_id=user_id,
+            check_in_time=datetime.fromisoformat(data['check_in_time']),
+            status=data.get('status', 'present')  # Default to 'present'
+        )
+        
+        db.session.add(attendance_record)
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Điểm danh thành công',
+            'attendance_record': attendance_record.to_dict()
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@student_bp.route('/student/attendance/excuse', methods=['POST'])
+@require_auth
+def submit_excuse_form():
+    """Gửi biểu mẫu minh chứng bằng text thay vì ảnh"""
+    try:
+        user_id = session.get('user_id')
+        user = User.query.get(user_id)
+        
+        if not user:
+            return jsonify({'error': 'User không tồn tại'}), 404
+        
+        data = request.get_json()
+        date_str = data.get('date')
+        excuse_reason = data.get('excuse_reason')
+        note = data.get('note', '')
+        
+        if not date_str:
+            return jsonify({'error': 'Thiếu ngày điểm danh'}), 400
+        
+        if not excuse_reason:
+            return jsonify({'error': 'Thiếu lý do minh chứng'}), 400
+        
+        # Parse date
+        try:
+            attendance_date = datetime.strptime(date_str, '%Y-%m-%d')
+        except ValueError:
+            return jsonify({'error': 'Ngày không hợp lệ, định dạng: YYYY-MM-DD'}), 400
+        
+        # Kiểm tra xem bản ghi điểm danh đã tồn tại chưa
+        attendance_record = Attendance.query.filter_by(
+            user_id=user_id,
+            check_in_time=attendance_date
+        ).first()
+        
+        if attendance_record:
+            # Cập nhật bản ghi có sẵn
+            attendance_record.excuse_reason = excuse_reason
+            attendance_record.note = note
+            attendance_record.teacher_approval = 'pending'
+            attendance_record.status = 'pending'
+        else:
+            # Tạo bản ghi mới
+            attendance_record = Attendance(
+                user_id=user_id,
+                check_in_time=attendance_date,
+                status='pending',
+                excuse_reason=excuse_reason,
+                note=note,
+                teacher_approval='pending'
+            )
+            db.session.add(attendance_record)
+        
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Gửi biểu mẫu minh chứng thành công',
+            'attendance_record': attendance_record.to_dict()
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500

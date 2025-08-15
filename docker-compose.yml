@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  app:
+  backend:
     build: ./backend
     ports:
       - "5001:5001"
@@ -10,6 +10,7 @@ services:
       - ./backend/src/database:/app/src/database
     environment:
       - FLASK_ENV=production
+      - CORS_ORIGINS=http://localhost:3001
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5001/api/auth/me"]
@@ -17,6 +18,29 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    networks:
+      - app-network
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./frontend/app:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true
+      - VITE_API_URL=http://localhost:5001
+    command: npm run dev
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
 
 volumes:
   uploads:

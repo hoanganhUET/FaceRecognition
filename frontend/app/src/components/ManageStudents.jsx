@@ -1,23 +1,405 @@
-import React from 'react';
+import React, { useState, useEffect } from "react";
 
 function ManageStudents() {
-  const mockStudents = [
-    { id: 1, name: 'Nguyễn Nhật Anh', class: 'K70I-CS1', status: 'Active' },
-    { id: 2, name: 'Trần Văn B', class: 'K70I-CS2', status: 'Active' },
-    { id: 3, name: 'Lê Thị C', class: 'K70I-CS1', status: 'Inactive' },
-  ];
+  const [students, setStudents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [isOpen, setIsOpen] = useState(true);
+  const [selectedStudent, setSelectedStudent] = useState(null); // học sinh được click
+  const [editData, setEditData] = useState({}); // dữ liệu đang sửa
+  const [newImage, setNewImage] = useState(null); // file ảnh mới
+  const [isValidatingImage, setIsValidatingImage] = useState(false); // trạng thái validate ảnh
+  const [imageValidationResult, setImageValidationResult] = useState(null); // kết quả validate
+
+  useEffect(() => {
+    fetchStudents();
+  }, []);
+
+  const fetchStudents = async () => {
+    try {
+      const response = await fetch(
+        "http://localhost:5001/api/admin/students",
+        {
+          credentials: "include",
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setStudents(data.students);
+      } else {
+        console.error("Failed to fetch students");
+      }
+    } catch (error) {
+      console.error("Error fetching students:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const validateImageHasFace = async (file) => {
+    if (!file) return;
+    
+    setIsValidatingImage(true);
+    setImageValidationResult(null);
+    
+    try {
+      // Convert file to base64
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const base64Image = e.target.result;
+        
+        try {
+          const response = await fetch('http://localhost:5001/api/face/validate-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ image: base64Image })
+          });
+          
+          const result = await response.json();
+          
+          if (response.ok) {
+            setImageValidationResult({
+              valid: true,
+              message: 'Ảnh hợp lệ - Đã phát hiện khuôn mặt'
+            });
+          } else {
+            setImageValidationResult({
+              valid: false,
+              message: result.error || 'Ảnh không hợp lệ hoặc không phát hiện được khuôn mặt'
+            });
+          }
+        } catch (error) {
+          setImageValidationResult({
+            valid: false,
+            message: 'Lỗi khi kiểm tra ảnh'
+          });
+        } finally {
+          setIsValidatingImage(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      setImageValidationResult({
+        valid: false,
+        message: 'Lỗi khi đọc file ảnh'
+      });
+      setIsValidatingImage(false);
+    }
+  };
+
+  const handleDeleteStudent = async (studentId) => {
+    if (window.confirm("Bạn có chắc chắn muốn xóa học sinh này?")) {
+      try {
+        const response = await fetch(
+          `http://localhost:5001/api/admin/students/${studentId}`,
+          {
+            method: "DELETE",
+            credentials: "include",
+          }
+        );
+
+        if (response.ok) {
+          alert("Xóa học sinh thành công!");
+          fetchStudents(); // Refresh danh sách
+        } else {
+          const data = await response.json();
+          alert(`Lỗi: ${data.error}`);
+        }
+      } catch (error) {
+        console.error("Error deleting student:", error);
+        alert("Lỗi kết nối server");
+      }
+    }
+  };
+
+  const handleUpdateStudent = async () => {
+    try {
+      // Kiểm tra validation ảnh nếu có ảnh mới
+      if (newImage) {
+        if (imageValidationResult && !imageValidationResult.valid) {
+          alert('Ảnh không hợp lệ hoặc không phát hiện được khuôn mặt!');
+          return;
+        }
+        if (isValidatingImage) {
+          alert('Đang kiểm tra ảnh, vui lòng đợi...');
+          return;
+        }
+      }
+
+      let response;
+      
+      // Nếu có file ảnh mới, sử dụng FormData
+      if (newImage) {
+        const formData = new FormData();
+        for (let key in editData) {
+          formData.append(key, editData[key]);
+        }
+        formData.append("avatar", newImage);
+        
+        response = await fetch(
+          `http://localhost:5001/api/admin/students/${selectedStudent.id}`,
+          {
+            method: "PUT",
+            credentials: "include",
+            body: formData,
+            // Không set Content-Type header khi dùng FormData
+          }
+        );
+      } else {
+        // Nếu không có file ảnh, sử dụng JSON
+        response = await fetch(
+          `http://localhost:5001/api/admin/students/${selectedStudent.id}`,
+          {
+            method: "PUT",
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(editData),
+          }
+        );
+      }
+
+      if (response.ok) {
+        alert("Cập nhật thành công!");
+        setSelectedStudent(null);
+        fetchStudents();
+      } else {
+        const data = await response.json();
+        alert(`Lỗi: ${data.error}`);
+      }
+    } catch (error) {
+      console.error("Error updating student:", error);
+      alert("Lỗi kết nối server");
+    }
+  };
+
+  const openEditPopup = (student) => {
+    setSelectedStudent(student);
+    setEditData({
+      full_name: student.full_name,
+      username: student.username,
+      class_name: student.class_name || "",
+      student_id: student.student_id,
+      school: student.school || "",
+    });
+    setNewImage(null);
+    setImageValidationResult(null);
+    setIsValidatingImage(false);
+  };
+
+  if (loading) return <div>Đang tải...</div>;
+  if (!isOpen) return null;
 
   return (
-    <div style={{ padding: '20px', border: '1px solid #ccc', borderRadius: '5px', backgroundColor: '#f9f9f9' }}>
-      <h2>Quản lý học sinh</h2>
-      <ul>
-        {mockStudents.map((student) => (
-          <li key={student.id} style={{ margin: '5px 0', color: student.status === 'Active' ? '#90ee90' : '#ffcccc' }}>
-            {student.name} (Lớp: {student.class}) - {student.status}
-          </li>
-        ))}
-      </ul>
-    </div>
+    <>
+      <div
+        style={{
+          padding: "20px",
+          border: "1px solid #ccc",
+          position: "fixed",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          borderRadius: "5px",
+          backgroundColor: "#f9f9f9",
+          minWidth: "350px",
+        }}
+      >
+        <button
+          onClick={() => setIsOpen(false)}
+          style={{
+            float: "right",
+            background: "#CC0000",
+            color: "white",
+            padding: "5px 5px",
+            border: "none",
+            borderRadius: "4px",
+            fontSize: "15px",
+            cursor: "pointer",
+          }}
+        >
+          Đóng
+        </button>
+        <h2>Quản lý học sinh</h2>
+        {students.length === 0 ? (
+          <p>Chưa có học sinh nào.</p>
+        ) : (
+        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+          <ul>
+            {students.map((student) => (
+              <li
+                key={student.id}
+                style={{
+                  margin: "10px 0",
+                  padding: "10px",
+                  border: "1px solid #ddd",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                }}
+                onClick={() => openEditPopup(student)}
+              >
+                <div>
+                  <strong>{student.full_name}</strong> - Username:{" "}
+                  {student.username}
+                </div>
+                <div>
+                  Lớp: {student.class_name || "Chưa có"} - ID:{" "}
+                  {student.student_id}
+                </div>
+                <div>Trường: {student.school || "Chưa có"}</div>
+                <button
+                  style={{
+                    padding: "5px 10px",
+                    backgroundColor: "#CC0000",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    marginTop: "5px",
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation(); // tránh trigger click mở popup
+                    handleDeleteStudent(student.id);
+                  }}
+                >
+                  Xóa
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+        )}
+      </div>
+
+      {selectedStudent && (
+        <div
+          style={{
+            padding: "20px",
+            border: "1px solid #ccc",
+            position: "fixed",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            borderRadius: "5px",
+            backgroundColor: "#e1e6cdff",
+            minWidth: "350px",
+            zIndex: 1000,
+          }}
+        >
+          <button
+            onClick={() => {
+              setSelectedStudent(null);
+              setImageValidationResult(null);
+              setIsValidatingImage(false);
+              setNewImage(null);
+            }}
+            style={{
+              float: "right",
+              background: "#CC0000",
+              color: "white",
+              padding: "5px 5px",
+              border: "none",
+              borderRadius: "4px",
+              fontSize: "15px",
+              cursor: "pointer",
+            }}
+          >
+            Đóng
+          </button>
+          <h3>Chỉnh sửa thông tin học sinh</h3>
+          <label>
+            Họ tên:{" "}
+            <input
+              type="text"
+              value={editData.full_name}
+              onChange={(e) =>
+                setEditData({ ...editData, full_name: e.target.value })
+              }
+            />
+          </label>
+          <br />
+          <label>
+            Username:{" "}
+            <input
+              type="text"
+              value={editData.username}
+              onChange={(e) =>
+                setEditData({ ...editData, username: e.target.value })
+              }
+            />
+          </label>
+          <br />
+          <label>
+            Lớp:{" "}
+            <input
+              type="text"
+              value={editData.class_name}
+              onChange={(e) =>
+                setEditData({ ...editData, class_name: e.target.value })
+              }
+            />
+          </label>
+          <br />
+          <label>
+            Trường:{" "}
+            <input
+              type="text"
+              value={editData.school}
+              onChange={(e) =>
+                setEditData({ ...editData, school: e.target.value })
+              }
+            />
+          </label>
+          <br />
+          <label>
+            Thay đổi ảnh học sinh:{" "}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files[0];
+                setNewImage(file);
+                setImageValidationResult(null);
+                if (file) {
+                  validateImageHasFace(file);
+                }
+              }}
+            />
+          </label>
+          {isValidatingImage && (
+            <div style={{ color: 'blue', fontSize: '12px', marginTop: '5px' }}>
+              Đang kiểm tra ảnh...
+            </div>
+          )}
+          {imageValidationResult && (
+            <div style={{ 
+              color: imageValidationResult.valid ? 'green' : 'red', 
+              fontSize: '12px', 
+              marginTop: '5px' 
+            }}>
+              {imageValidationResult.message}
+            </div>
+          )}
+          <br />
+          <button
+            onClick={handleUpdateStudent}
+            style={{
+              marginTop: "10px",
+              padding: "5px 10px",
+              backgroundColor: "#3c5066ff",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+            }}
+          >
+            Lưu
+          </button>
+        </div>
+      )}
+    </>
   );
 }
 

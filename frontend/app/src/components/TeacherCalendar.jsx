@@ -1,87 +1,90 @@
 import React, { useState, useEffect } from 'react';
 
 function TeacherCalendar() {
-  const [currentDate, setCurrentDate] = useState(new Date()); // Ngày hiện tại (31/07/2025)
-  const [displayMonth, setDisplayMonth] = useState(null); // Tháng được hiển thị
+  const [currentDate, setCurrentDate] = useState(new Date());
   const [calendar, setCalendar] = useState([]);
-  const [selectedDay, setSelectedDay] = useState(null); // Ngày được chọn
-  const [studentList, setStudentList] = useState([]); // Danh sách học sinh dựa trên ngày
+  const [selectedDay, setSelectedDay] = useState(null);
+  const [studentList, setStudentList] = useState([]);
+  const [attendanceData, setAttendanceData] = useState({});
+  const [loading, setLoading] = useState(true);
 
-  // Dữ liệu giả cho điểm danh học sinh (tháng 7, 8/2025)
-  const mockAttendance = {
-    '7-1': [
-      { name: 'Nguyễn An', status: 'present' },
-      { name: 'Trần Bình', status: 'absent' },
-      { name: 'Lê Cường', status: 'present' },
-    ],
-    '7-2': [
-      { name: 'Nguyễn An', status: 'absent' },
-      { name: 'Trần Bình', status: 'present' },
-    ],
-    '7-3': [
-      { name: 'Lê Cường', status: 'present' },
-      { name: 'Nguyễn An', status: 'absent' },
-    ],
-    '7-5': [
-      { name: 'Trần Bình', status: 'absent' },
-      { name: 'Lê Cường', status: 'present' },
-    ],
-    '7-31': [
-      { name: 'Nguyễn An', status: 'present' },
-      { name: 'Trần Bình', status: 'absent' },
-      { name: 'Lê Cường', status: 'present' },
-    ], // Thêm ngày hiện tại
-    '8-1': [
-      { name: 'Nguyễn An', status: 'present' },
-      { name: 'Lê Cường', status: 'absent' },
-    ],
+  // Fetch attendance data từ API
+  useEffect(() => {
+    fetchAttendanceData();
+  }, [currentDate]);
+
+  const fetchAttendanceData = async () => {
+    try {
+      setLoading(true);
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth() + 1; // +1 vì getMonth() trả về 0-11
+      
+      const response = await fetch(
+        `http://localhost:5001/api/teacher/attendance?year=${year}&month=${month}`,
+        { credentials: 'include' }
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        setAttendanceData(data.attendance || {});
+      } else {
+        console.error('Failed to fetch attendance data');
+        setAttendanceData({});
+      }
+    } catch (error) {
+      console.error('Error fetching attendance data:', error);
+      setAttendanceData({});
+    } finally {
+      setLoading(false);
+    }
   };
 
+  // Tạo calendar dựa trên dữ liệu thực
   useEffect(() => {
-    const updateMonth = () => {
-      const now = new Date();
-      setCurrentDate(now);
-      setDisplayMonth(now.getMonth()); // Cập nhật tháng hiện tại (7 cho tháng 7)
-    };
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const firstDay = new Date(year, month, 1).getDay();
 
-    updateMonth();
-    const interval = setInterval(updateMonth, 60000); // Kiểm tra mỗi phút
-    return () => clearInterval(interval); // Dọn dẹp interval
-  }, []);
-
-  useEffect(() => {
-    if (displayMonth !== null) {
-      const year = currentDate.getFullYear();
-      const month = displayMonth;
-      const daysInMonth = new Date(year, month + 1, 0).getDate();
-      const firstDay = new Date(year, month, 1).getDay();
-
-      const calendarDays = [];
-      for (let i = 0; i < firstDay; i++) {
-        calendarDays.push(null);
-      }
-      for (let day = 1; day <= daysInMonth; day++) {
-        const key = `${month + 1}-${day}`;
-        calendarDays.push({
-          day,
-          month: month + 1,
-          hasAttendance: !!mockAttendance[key], // Kiểm tra xem ngày có dữ liệu điểm danh không
-        });
-      }
-      while (calendarDays.length % 7 !== 0) {
-        calendarDays.push(null);
-      }
-
-      setCalendar(calendarDays);
+    const calendarDays = [];
+    
+    // Thêm các ngày trống
+    for (let i = 0; i < firstDay; i++) {
+      calendarDays.push(null);
     }
-  }, [displayMonth, currentDate]);
+    
+    // Thêm các ngày trong tháng
+    for (let day = 1; day <= daysInMonth; day++) {
+      const key = `${month + 1}-${day}`;
+      calendarDays.push({
+        day,
+        month: month + 1,
+        hasAttendance: !!attendanceData[key],
+      });
+    }
+    
+    // Điền đủ 7 cột
+    while (calendarDays.length % 7 !== 0) {
+      calendarDays.push(null);
+    }
+
+    setCalendar(calendarDays);
+  }, [currentDate, attendanceData]);
 
   const goBackMonth = () => {
-    setDisplayMonth((prev) => (prev === 0 ? 11 : prev - 1));
+    setCurrentDate(prevDate => {
+      const newDate = new Date(prevDate);
+      newDate.setMonth(newDate.getMonth() - 1);
+      return newDate;
+    });
   };
 
   const goNextMonth = () => {
-    setDisplayMonth((prev) => (prev === 11 ? 0 : prev + 1));
+    setCurrentDate(prevDate => {
+      const newDate = new Date(prevDate);
+      newDate.setMonth(newDate.getMonth() + 1);
+      return newDate;
+    });
   };
 
   const monthNames = [
@@ -93,49 +96,58 @@ function TeacherCalendar() {
     if (day) {
       setSelectedDay(day);
       const key = `${day.month}-${day.day}`;
-      setStudentList(mockAttendance[key] || []); // Lấy danh sách học sinh dựa trên ngày
+      setStudentList(attendanceData[key] || []);
     }
   };
 
+  if (loading) {
+    return <div style={{ marginLeft: '30px', padding: '20px' }}>Đang tải dữ liệu...</div>;
+  }
+
   return (
     <div style={{ marginLeft: '30px', padding: '20px', color: '#333' }}>
-      <h1 style={{ fontSize: '24px', marginBottom: '10px' }}>Theo dõi điểm danh học sinh</h1>
+      <h1 style={{ fontSize: '30px', marginBottom: '10px',textAlign: 'center' }}>Theo dõi điểm danh học sinh</h1>
       <div>
-        <h2 style={{ fontSize: '18px', marginBottom: '5px' }}>
-          {monthNames[displayMonth]} {currentDate.getFullYear()}
+        <h2 style={{ fontSize: '25px', marginBottom: '5px',textAlign: 'center' }}>
+          {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
         </h2>
-        <button
+         <button
           style={{
             padding: '5px 10px',
             marginBottom: '10px',
-            backgroundColor: '#4CAF50',
-            color: 'white',
+            backgroundColor: 'transparent',
             border: 'none',
-            borderRadius: '4px',
             cursor: 'pointer',
           }}
           onClick={goBackMonth}
-          disabled={displayMonth === null}
+          disabled={loading}
         >
-          trước
+          <img
+            src="/back.png"
+            alt="Trước"
+            style={{ width: '40px', height: '40px' }}
+          />
         </button>
         <button
           style={{
             padding: '5px 10px',
             marginBottom: '10px',
-            backgroundColor: '#4CAF50',
-            color: 'white',
+            backgroundColor: 'transparent',
             border: 'none',
-            borderRadius: '4px',
             cursor: 'pointer',
-            marginLeft: '10px',
+            marginLeft: '480px',
           }}
           onClick={goNextMonth}
-          disabled={displayMonth === null}
+          disabled={loading}
         >
-          sau
+          <img
+            src="/next.png"
+            alt="Sau"
+            style={{ width: '40px', height: '40px' }}
+          />
         </button>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 40px)', gap: '5px' }}>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 80px)', gap: '7px' }}>
           {['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'].map((day) => (
             <div key={day} style={{ fontWeight: 'bold', textAlign: 'center' }}>
               {day}
@@ -145,8 +157,8 @@ function TeacherCalendar() {
             <div
               key={index}
               style={{
-                width: '40px',
-                height: '40px',
+                width: '80px',
+                height: '80px',
                 textAlign: 'center',
                 border: '1px solid #ccc',
                 backgroundColor: day === null ? 'transparent' : day.hasAttendance ? '#90ee90' : 'transparent',
@@ -182,7 +194,8 @@ function TeacherCalendar() {
             <ul>
               {studentList.map((student, index) => (
                 <li key={index} style={{ margin: '5px 0', color: student.status === 'present' ? '#90ee90' : '#ffcccc' }}>
-                  {student.name} - {student.status === 'present' ? 'Đã điểm danh' : 'Chưa điểm danh'}
+                  {student.full_name || student.name} - {student.status === 'present' ? 'Đã điểm danh' : 'Vắng mặt'}
+                  {student.check_in_time && <span> ({student.check_in_time})</span>}
                 </li>
               ))}
             </ul>
@@ -192,7 +205,7 @@ function TeacherCalendar() {
           <button
             style={{
               padding: '5px 10px',
-              backgroundColor: '#f44336',
+              backgroundColor: '#CC0000',
               color: 'white',
               border: 'none',
               borderRadius: '4px',

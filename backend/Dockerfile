@@ -29,6 +29,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Convert line endings and make start script executable
+RUN sed -i 's/\r$//' start.sh
+RUN chmod +x start.sh
+
 # Create uploads directory
 RUN mkdir -p uploads/faces
 
@@ -39,6 +43,6 @@ EXPOSE 5001
 ENV FLASK_APP=src/main.py
 ENV FLASK_ENV=production
 
-# Run the application
-CMD ["python", "src/main.py"]
+# Run the application with migration
+CMD ["./start.sh"]
 
